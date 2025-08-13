@@ -252,7 +252,7 @@ end
 
 -- SINGLE LuCI endpoint: show form (GET) and handle convert/save (POST)
 function index()
-    entry({"admin", "services", "clash_converter"}, call("action_index"), _("Clash Converter"), 90).dependent = true
+    entry({"admin", "services", "clash_converter"}, call("action_index"), _("Clash Converter By Raducksijaa"), 90).dependent = true
 end
 
 function action_index()
