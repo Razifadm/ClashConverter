@@ -1,56 +1,101 @@
 <%+header%>
 <h1>Clash Converter</h1>
 
-<%
--- Ambil IP LAN dari UCI config
-local lan_ip = luci.sys.exec("uci get network.lan.ipaddr"):match("%S+") or "192.168.1.1"
-local openclash_url = "http://" .. lan_ip .. "/cgi-bin/luci/admin/services/openclash"
-%>
-
-<form method="POST" action="<%=url('admin/services/clash_converter')%>">
-    <textarea name="pastebox" rows="10" style="width:100%;" placeholder="Paste VLESS atau VMESS link di sini..."></textarea>
+<form id="converterForm">
+    <label>Paste VLESS/VMESS Link:</label><br>
+    <textarea id="pastebox" rows="4" style="width:100%; font-size:14px;" placeholder="Paste link di sini..."></textarea>
     <br><br>
 
-    <label>
-        Save as (.yaml):
-        <input type="text" name="name_base" placeholder="contoh: myconfig" style="width:200px;">
-    </label>
-    <br><br>
+    <label>Custom Name (optional):</label><br>
+    <input type="text" id="name_base" style="width:50%; font-size:14px;" placeholder="Nama fail YAML">
 
-    <label>
-        <input type="checkbox" name="overwrite" value="1">
-        Overwrite existing file
-    </label>
-    <br>
-    <label>
-        <input type="checkbox" name="autoreload" value="1">
-        Auto reload OpenClash selepas convert
-    </label>
     <br><br>
+    <label>Preview/Edit YAML:</label><br>
+    <textarea id="yaml_output" rows="10" style="width:100%; font-size:13px; font-family:monospace;"></textarea>
 
-    <button type="submit" class="cbi-button cbi-button-apply">Convert &amp; Preview</button>
-    <a href="<%=openclash_url%>" 
-       class="cbi-button cbi-button-reset" 
-       style="background-color:#007BFF;color:white;">
-       Open OpenClash UI
-    </a>
+    <br><br>
+    <input type="checkbox" id="overwrite" value="1"> Overwrite jika wujud
+    <br><br>
+    <button type="button" id="btn_save" style="padding:5px 15px; font-size:14px;">Save</button>
+    <a class="cbi-button cbi-button-apply" href="<%=openclash_url%>" style="margin-left:10px;">Open OpenClash UI</a>
 </form>
 
-<% if saved_preview and #saved_preview > 0 then %>
-    <h2>Preview generated YAML</h2>
-    <% for i, rec in ipairs(saved_preview) do %>
-        <h3><%=i%>) <%=rec.name%> (<i><%=rec.fname%></i>)</h3>
-        <pre style="white-space:pre-wrap;"><%=rec.yaml%></pre>
-    <% end %>
-<% end %>
+<div id="save_msg" style="margin-top:10px;color:green;"></div>
 
-<% if errors and #errors > 0 then %>
-    <h3>Errors</h3>
-    <ul>
-        <% for _, e in ipairs(errors) do %>
-            <li><%=e%></li>
-        <% end %>
-    </ul>
-<% end %>
+<script>
+function urlDecode(s){ return decodeURIComponent(s.replace(/\+/g," ")); }
+function base64Decode(str){ try{ return atob(str.replace(/-/g,"+").replace(/_/g,"/")); }catch(e){ return ""; } }
 
-<%+footer%>
+function parseVLESS(line){
+    let raw=line.replace(/^vless:\/\//,"");
+    let parts=raw.split("#"); let remark=parts[1]?urlDecode(parts[1]):"";
+    let userHost=parts[0].split("@"); let uuid="", hostportquery="";
+    if(userHost.length==2){ uuid=userHost[0]; hostportquery=userHost[1]; } else { hostportquery=parts[0]; }
+    let hostport=hostportquery.split("?")[0], qstr=hostportquery.split("?")[1]||"";
+    let host=hostport.split(":")[0], port=parseInt(hostport.split(":")[1])||0;
+    let q={}; qstr.split("&").forEach(kv=>{let p=kv.split("="); if(p[0]) q[p[0]]=urlDecode(p[1]||"");});
+    return {raw_type:"vless", server:host, port:port, uuid:uuid||q.uuid||"", name:remark||q.remark||host,
+            alterId:0, cipher:"auto", tls:q.security=="tls"||q.tls=="1"||q.tls=="true",
+            skip_cert_verify:true, servername:q.sni||q.host||"", network:q.type||q.net||"ws",
+            ws_path:q.path||"/", ws_headers:q.host?{"Host":q.host}:{}, udp:true};
+}
+
+function parseVMESS(line){
+    let b64=line.replace(/^vmess:\/\//,""); let decoded=base64Decode(b64); if(!decoded) return null;
+    let obj=JSON.parse(decoded); return {raw_type:"vmess", server:obj.add||obj.host||"", port:parseInt(obj.port)||0,
+        uuid:obj.id||obj.uuid||"", alterId:parseInt(obj.aid)||parseInt(obj.alterId)||0, cipher:"auto",
+        tls:obj.tls&&obj.tls!=="0", skip_cert_verify:true, servername:obj.sni||obj.host||"",
+        network:obj.net||obj.type||"ws", ws_path:obj.path||"/", ws_headers:obj.host?{"Host":obj.host}:{}, udp:true,
+        name:obj.ps||obj.tag||obj.remarks||obj.add||obj.host||"vmess_node"};
+}
+
+function safeNameRaw(name){ return (name||"node").trim().replace(/[^\w\-\._]/g,"-").replace(/\-+/g,"-").toLowerCase(); }
+
+function buildYAML(node){
+    let pname=safeNameRaw(node.name), gname=pname.toUpperCase(), lines=[
+        "port: 7890","socks-port: 7891","redir-port: 7892","mixed-port: 7893","tproxy-port: 7895",
+        "ipv6: false","mode: rule","log-level: silent","allow-lan: true","external-controller: 0.0.0.0:9090",
+        "secret: ''","bind-address: '*'","unified-delay: true","profile:","  store-selected: true",
+        "dns:","  enable: true","  ipv6: false","  enhanced-mode: fake-ip","  listen: 127.0.0.1:7874",
+        "  nameserver:","    - 1.1.1.1","    - 1.0.0.1","  fallback:","    - https://cloudflare-dns.com/dns-query",
+        "    - https://dns.google/dns-query","  default-nameserver:","    - 8.8.8.8","    - 8.8.4.4",
+        "proxies:","  - name: "+pname,"    server: "+node.server,"    port: "+node.port,"    type: "+node.raw_type,
+        "    uuid: "+node.uuid,"    alterId: "+node.alterId,"    cipher: "+node.cipher,"    tls: "+node.tls,
+        "    skip-cert-verify: "+node.skip_cert_verify,"    servername: "+node.servername,"    network: "+node.network
+    ];
+    if(node.network=="ws"){ lines.push("    ws-opts:","      path: "+node.ws_path,"      headers:","        Host: "+(node.ws_headers.Host||node.servername||node.server)); }
+    lines.push("    udp: "+node.udp,"proxy-groups:","  - name: "+gname,"    type: select","    proxies:","      - "+pname,"      - DIRECT","rules:","  - MATCH,"+gname);
+    return lines.join("\n");
+}
+
+document.getElementById("pastebox").addEventListener("input", function(){
+    let val=this.value.trim(); let yamlOut=document.getElementById("yaml_output");
+    let lines=val.split(/\r?\n/); let yamlAll="";
+    lines.forEach(l=>{
+        l=l.trim(); if(l=="") return;
+        let node=null; if(l.startsWith("vless://")) node=parseVLESS(l);
+        else if(l.startsWith("vmess://")) node=parseVMESS(l);
+        if(node) yamlAll=buildYAML(node);
+    });
+    document.getElementById("yaml_output").value=yamlAll;
+});
+
+document.getElementById("btn_save").addEventListener("click", function(){
+    let yaml = document.getElementById("yaml_output").value;
+    let name_base = document.getElementById("name_base").value || "clash_config";
+    let overwrite = document.getElementById("overwrite").checked ? "1" : "0";
+
+    fetch("<%=url('admin/services/clash_converter/save')%>",{
+        method:"POST",
+        headers: {'Content-Type':'application/x-www-form-urlencoded'},
+        body: "yaml_input="+encodeURIComponent(yaml)+"&name_base="+encodeURIComponent(name_base)+"&overwrite="+overwrite
+    }).then(res=>res.json()).then(data=>{
+        let msg=document.getElementById("save_msg");
+        if(data.status=="ok"){ msg.style.color="green"; msg.innerText="Saved: "+data.path; }
+        else { msg.style.color="red"; msg.innerText="Error: "+data.msg; }
+    }).catch(err=>{
+        let msg=document.getElementById("save_msg");
+        msg.style.color="red"; msg.innerText="Fetch error";
+    });
+});
+</script>
