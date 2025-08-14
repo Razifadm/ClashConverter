@@ -1,78 +1,99 @@
--- /usr/lib/lua/luci/controller/clash_converter.lua
 module("luci.controller.clash_converter", package.seeall)
 
 local http   = require("luci.http")
 local fs     = require("nixio.fs")
 local util   = require("luci.util")
 local json   = require("luci.jsonc")
-local nixio  = require("nixio")
 local sys    = require("luci.sys")
 local tpl    = require("luci.template")
 
--- CONFIG
 local SAVE_DIR = "/etc/openclash/config"
 
--- ambil LAN IP secara dinamik
 local function get_lan_ip()
     local ip = sys.exec("uci get network.lan.ipaddr 2>/dev/null"):match("%S+")
-    if not ip or ip == "" then
-        ip = "192.168.1.1" -- fallback default
-    end
-    return ip
+    return ip ~= "" and ip or "192.168.1.1"
 end
 
 local function get_openclash_url()
     return "http://" .. get_lan_ip() .. "/cgi-bin/luci/admin/services/openclash"
 end
 
-local OPENCLASH_RELOAD_CMD = "/etc/init.d/openclash restart >/dev/null 2>&1"
-
--- URL-decode helper
 local function url_decode(s)
     if not s then return s end
     s = tostring(s):gsub("+", " ")
-    s = s:gsub("%%(%x%x)", function(hex) return string.char(tonumber(hex,16)) end)
-    return s
+    return s:gsub("%%(%x%x)", function(hex) return string.char(tonumber(hex,16)) end)
 end
 
--- base64 decode
 local function base64_decode(s)
     if not s then return nil end
-    s = tostring(s):gsub("%s+", ""):gsub("%-","+"):gsub("_","/")
+    s = s:gsub("%s+", ""):gsub("%-","+"):gsub("_","/")
     local rem = #s % 4
     if rem > 0 then s = s .. string.rep("=", 4 - rem) end
     local ok, res = pcall(function() return util.base64decode(s) end)
     if ok and res then return res end
-    local ok2, nb = pcall(function() return nixio.bin and nixio.bin.b64decode and nixio.bin.b64decode(s) end)
-    if ok2 and nb then return nb end
     return nil
 end
 
--- sanitize filename
 local function safe_name_raw(name)
     if not name or name == "" then return "node" end
-    local s = tostring(name):gsub("^%s+",""):gsub("%s+$","")
+    local s = name:gsub("^%s+",""):gsub("%s+$","")
     s = s:gsub("[^%w%-%._]", "-")
-    s = s:gsub("%-+", "-")
-    s = s:lower()
+    s = s:gsub("%-+", "-"):lower()
     return s
 end
 
--- unique filename
 local function unique_filename(base, overwrite)
     if not fs.access(SAVE_DIR) then fs.mkdir(SAVE_DIR) end
-    base = base or "clash_config"
-    local fname = string.format("%s/%s.yaml", SAVE_DIR, base)
+    local fname = string.format("%s/%s.yaml", SAVE_DIR, base or "clash_config")
     if overwrite then return fname end
     if not fs.stat(fname) then return fname end
     local i = 1
-    while fs.stat(string.format("%s/%s_%d.yaml", SAVE_DIR, base, i)) do
-        i = i + 1
-    end
+    while fs.stat(string.format("%s/%s_%d.yaml", SAVE_DIR, base, i)) do i=i+1 end
     return string.format("%s/%s_%d.yaml", SAVE_DIR, base, i)
 end
 
--- Parse vmess
+local function save_config(name_base, content, overwrite)
+    local fname = unique_filename(name_base, overwrite)
+    local ok, err = pcall(function() fs.writefile(fname, content) end)
+    if not ok then return nil, err end
+    return fname
+end
+
+-- Untuk live preview, parser VLESS/VMESS dan build YAML sama macam sebelum ini
+local function parse_vless(line)
+    local raw = line:match("^vless://(.+)")
+    if not raw then return nil end
+    local before_hash, remark = raw:match("^([^#]+)#?(.*)$")
+    remark = remark ~= "" and url_decode(remark) or nil
+    local userpart, hostpart = before_hash:match("^([^@]+)@(.+)$")
+    local uuid, hostportquery = userpart, hostpart
+    if not uuid then hostportquery = before_hash end
+    local hostport, qstr = hostportquery:match("^([^?]+)%??(.*)$")
+    local host, port = hostport:match("^(.-):(%d+)$")
+    if not host then host = hostport end
+    port = tonumber(port) or 0
+    local q = {}
+    if qstr and qstr~="" then
+        for k,v in qstr:gmatch("([^&=]+)=([^&=]+)") do q[k]=url_decode(v) end
+    end
+    return {
+        raw_type = "vless",
+        server = host or "",
+        port = port,
+        uuid = uuid or q.uuid or "",
+        name = remark or q.remark or host or "vless_node",
+        alterId = 0,
+        cipher = "auto",
+        tls = (q.security=="tls") or (q.tls=="1") or (q.tls=="true"),
+        skip_cert_verify = true,
+        servername = q.sni or q.host or "",
+        network = q.type or q.net or "ws",
+        ws_path = q.path or q.wsPath or "/",
+        ws_headers = (q.host and q.host~="") and {Host=q.host} or {},
+        udp = true
+    }
+end
+
 local function parse_vmess(line)
     local b64 = line:match("^vmess://(.+)")
     if not b64 then return nil end
@@ -80,85 +101,28 @@ local function parse_vmess(line)
     if not decoded then return nil end
     local ok, obj = pcall(function() return json.parse(decoded) end)
     if not ok or not obj then return nil end
-    local node = {}
-    node.raw_type = "vmess"
-    node.name = obj.ps or obj.tag or obj.remarks or obj.add or obj.host or "vmess_node"
-    node.server = obj.add or obj.host or ""
-    node.port = tonumber(obj.port) or 0
-    node.uuid = obj.id or obj.uuid or ""
-    node.alterId = tonumber(obj.aid) or tonumber(obj.alterId) or 0
-    node.cipher = "auto"
-    node.tls = (obj.tls and tostring(obj.tls) ~= "" and tostring(obj.tls) ~= "0")
-    node.skip_cert_verify = true
-    node.servername = obj.sni or obj.host or ""
-    node.network = obj.net or obj.type or "ws"
-    node.ws_path = obj.path or obj.wsPath or "/"
-    node.ws_headers = {}
-    if obj.host and obj.host ~= "" then node.ws_headers["Host"] = obj.host end
-    node.udp = true
-    return node
-end
-
--- Parse vless
-local function parse_vless(line)
-    local raw = line:match("^vless://(.+)")
-    if not raw then return nil end
-    local before_hash, remark = raw:match("^([^#]+)#?(.*)$")
-    remark = (remark and remark ~= "") and url_decode(remark) or nil
-    local userpart, hostpart = before_hash:match("^([^@]+)@(.+)$")
-    local uuid = nil
-    local hostportquery = nil
-    if userpart and hostpart then
-        uuid = userpart
-        hostportquery = hostpart
-    else
-        hostportquery = before_hash
-    end
-    local hostport, qstr = hostportquery:match("^([^?]+)%??(.*)$")
-    local host, port = hostport:match("^(.-):(%d+)$")
-    if not host then host = hostport end
-    port = tonumber(port) or 0
-    local q = {}
-    if qstr and qstr ~= "" then
-        for k,v in qstr:gmatch("([^&=]+)=([^&=]+)") do
-            q[k] = url_decode(v)
-        end
-    end
-    local node = {}
-    node.raw_type = "vless"
-    node.server = host or ""
-    node.port = port
-    node.uuid = uuid or q.uuid or ""
-    node.name = remark or q.remark or node.server or "vless_node"
-    node.alterId = 0
-    node.cipher = "auto"
-    node.tls = (q.security == "tls") or (q.tls == "1") or (q.tls == "true")
-    node.skip_cert_verify = true
-    node.servername = q.sni or q.host or ""
-    node.network = q.type or q.net or "ws"
-    node.ws_path = q.path or q.wsPath or "/"
-    node.ws_headers = {}
-    if q.host and q.host ~= "" then node.ws_headers["Host"] = q.host end
-    node.udp = true
-    return node
+    return {
+        raw_type = "vmess",
+        name = obj.ps or obj.tag or obj.remarks or obj.add or obj.host or "vmess_node",
+        server = obj.add or obj.host or "",
+        port = tonumber(obj.port) or 0,
+        uuid = obj.id or obj.uuid or "",
+        alterId = tonumber(obj.aid) or tonumber(obj.alterId) or 0,
+        cipher = "auto",
+        tls = obj.tls and tostring(obj.tls)~="" and tostring(obj.tls)~="0",
+        skip_cert_verify = true,
+        servername = obj.sni or obj.host or "",
+        network = obj.net or obj.type or "ws",
+        ws_path = obj.path or obj.wsPath or "/",
+        ws_headers = (obj.host and obj.host~="") and {Host=obj.host} or {},
+        udp = true
+    }
 end
 
 -- Build YAML
 local function build_full_config_yaml(node)
-    local name = node.name or node.server or "node"
-    local server = node.server or ""
-    local port = tonumber(node.port) or 0
-    local uuid = node.uuid or ""
-    local alterId = tonumber(node.alterId) or 0
-    local cipher = node.cipher or "auto"
-    local tls = (node.tls and true) or false
-    local skip_cert = (node.skip_cert_verify and true) or false
-    local servername = node.servername or ""
-    local network = node.network or "ws"
-    local ws_path = node.ws_path or "/"
-    local ws_headers = node.ws_headers or {}
-    local pname = safe_name_raw(name)
-    local group_name = string.upper(pname)
+    local pname = safe_name_raw(node.name or node.server or "node")
+    local group_name = pname:upper()
     local lines = {
         "port: 7890",
         "socks-port: 7891",
@@ -191,88 +155,66 @@ local function build_full_config_yaml(node)
         "    - 8.8.4.4",
         "proxies:",
         string.format("  - name: %s", pname),
-        string.format("    server: %s", server),
-        string.format("    port: %d", port),
+        string.format("    server: %s", node.server or ""),
+        string.format("    port: %d", node.port or 0),
         string.format("    type: %s", node.raw_type or "vless"),
-        string.format("    uuid: %s", uuid),
-        string.format("    alterId: %d", alterId),
-        string.format("    cipher: %s", cipher),
-        string.format("    tls: %s", tostring(tls)),
-        string.format("    skip-cert-verify: %s", tostring(skip_cert)),
-        "    servername: " .. (servername ~= "" and servername or ""),
-        string.format("    network: %s", network)
+        string.format("    uuid: %s", node.uuid or ""),
+        string.format("    alterId: %d", node.alterId or 0),
+        string.format("    cipher: %s", node.cipher or "auto"),
+        string.format("    tls: %s", tostring(node.tls)),
+        string.format("    skip-cert-verify: %s", tostring(node.skip_cert_verify)),
+        "    servername: " .. (node.servername or ""),
+        string.format("    network: %s", node.network or "ws")
     }
-    if network == "ws" then
-        table.insert(lines, "    ws-opts:")
-        table.insert(lines, string.format("      path: %s", ws_path))
-        table.insert(lines, "      headers:")
-        local host_val = ws_headers["Host"] or servername or server
-        table.insert(lines, string.format("        Host: %s", host_val))
+    if node.network=="ws" then
+        table.insert(lines,"    ws-opts:")
+        table.insert(lines,"      path: "..(node.ws_path or "/"))
+        table.insert(lines,"      headers:")
+        local host_val = node.ws_headers["Host"] or node.servername or node.server
+        table.insert(lines,"        Host: "..host_val)
     end
-    table.insert(lines, string.format("    udp: %s", tostring(node.udp and true or false)))
-    table.insert(lines, "proxy-groups:")
-    table.insert(lines, string.format("  - name: %s", group_name))
-    table.insert(lines, "    type: select")
-    table.insert(lines, "    proxies:")
-    table.insert(lines, string.format("      - %s", pname))
-    table.insert(lines, "      - DIRECT")
-    table.insert(lines, "rules:")
-    table.insert(lines, string.format("  - MATCH,%s", group_name))
-    return table.concat(lines, "\n") .. "\n"
+    table.insert(lines,"    udp: "..tostring(node.udp))
+    table.insert(lines,"proxy-groups:")
+    table.insert(lines,"  - name: "..group_name)
+    table.insert(lines,"    type: select")
+    table.insert(lines,"    proxies:")
+    table.insert(lines,"      - "..pname)
+    table.insert(lines,"      - DIRECT")
+    table.insert(lines,"rules:")
+    table.insert(lines,"  - MATCH,"..group_name)
+    return table.concat(lines,"\n").."\n"
 end
 
--- save file
-local function save_config(name_base, content, overwrite)
-    local fname = unique_filename(name_base, overwrite)
-    local ok, err = pcall(function() fs.writefile(fname, content) end)
-    if not ok then return nil, err end
-    return fname
-end
-
+-- Controller
 function index()
-    entry({"admin", "services", "clash_converter"}, call("action_index"), _("Clash Converter"), 90).dependent = true
+    entry({"admin","services","clash_converter"}, call("action_index"), _("Clash Converter"), 90).dependent = true
+    entry({"admin","services","clash_converter","save"}, call("action_save"), nil).leaf = true
 end
 
+-- Render page
 function action_index()
-    local saved_preview, errors = {}, {}
-    if http.getenv("REQUEST_METHOD") == "POST" then
-        local overwrite = http.formvalue("overwrite") == "1"
-        local autoreload = http.formvalue("autoreload") == "1"
-        -- ambil nama custom dari form
-        local custom_name = safe_name_raw(http.formvalue("name_base") or "")
-        local pastebox = http.formvalue("pastebox") or ""
-        local lines = {}
-        for ln in (pastebox.."\n"):gmatch("([^\r\n]+)\r?\n") do
-            ln = ln:match("^%s*(.-)%s*$")
-            if ln ~= "" then table.insert(lines, ln) end
-        end
-        for _, ln in ipairs(lines) do
-            local node
-            if ln:match("^vless://") then
-                node = parse_vless(ln)
-            elseif ln:match("^vmess://") then
-                node = parse_vmess(ln)
-            else
-                table.insert(errors, "Unsupported link: " .. ln)
-            end
-            if node then
-                local base = custom_name ~= "" and custom_name or safe_name_raw(node.name or node.server or "node")
-                local yaml = build_full_config_yaml(node)
-                local fname, ferr = save_config(base, yaml, overwrite)
-                if not fname then
-                    table.insert(errors, "Failed to save " .. base .. ": " .. tostring(ferr))
-                else
-                    table.insert(saved_preview, { name = base, fname = fname, yaml = yaml })
-                end
-            end
-        end
-        if autoreload and #saved_preview > 0 then
-            os.execute(OPENCLASH_RELOAD_CMD .. " &")
-        end
-    end
     tpl.render("clash_converter/index", {
-        saved_preview = saved_preview,
-        errors = errors,
         openclash_url = get_openclash_url()
     })
+end
+
+-- Save handler
+function action_save()
+    http.prepare_content("application/json")
+    local yaml_input = http.formvalue("yaml_input") or ""
+    local name_base = http.formvalue("name_base") or "clash_config"
+    local overwrite = http.formvalue("overwrite")=="1"
+
+    if yaml_input == "" then
+        http.write_json({status="error", msg="YAML kosong"})
+        return
+    end
+
+    local fname, err = save_config(safe_name_raw(name_base), yaml_input, overwrite)
+    if not fname then
+        http.write_json({status="error", msg=tostring(err)})
+        return
+    end
+
+    http.write_json({status="ok", path=fname})
 end
