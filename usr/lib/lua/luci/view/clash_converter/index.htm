@@ -1,0 +1,48 @@
+<%+header%>
+<h1>Clash Converter</h1>
+
+<%
+-- Ambil IP LAN dari UCI config
+local lan_ip = luci.sys.exec("uci get network.lan.ipaddr"):match("%S+") or "192.168.1.1"
+local openclash_url = "http://" .. lan_ip .. "/cgi-bin/luci/admin/services/openclash"
+%>
+
+<form method="POST" action="<%=url('admin/services/clash_converter')%>">
+    <textarea name="pastebox" rows="10" style="width:100%;" placeholder="Paste VLESS atau VMESS link di sini..."></textarea>
+    <br><br>
+    <label>
+        <input type="checkbox" name="overwrite" value="1">
+        Overwrite existing file
+    </label>
+    <br>
+    <label>
+        <input type="checkbox" name="autoreload" value="1">
+        Auto reload OpenClash selepas convert
+    </label>
+    <br><br>
+    <button type="submit" class="cbi-button cbi-button-apply">Convert &amp; Preview</button>
+    <a href="<%=openclash_url%>" 
+       class="cbi-button cbi-button-reset" 
+       style="background-color:#007BFF;color:white;">
+       Open OpenClash UI
+    </a>
+</form>
+
+<% if saved_preview and #saved_preview > 0 then %>
+    <h2>Preview generated YAML</h2>
+    <% for i, rec in ipairs(saved_preview) do %>
+        <h3><%=i%>) <%=rec.name%> (<i><%=rec.fname%></i>)</h3>
+        <pre style="white-space:pre-wrap;"><%=rec.yaml%></pre>
+    <% end %>
+<% end %>
+
+<% if errors and #errors > 0 then %>
+    <h3>Errors</h3>
+    <ul>
+        <% for _, e in ipairs(errors) do %>
+            <li><%=e%></li>
+        <% end %>
+    </ul>
+<% end %>
+
+<%+footer%>
