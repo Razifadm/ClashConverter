@@ -10,6 +10,13 @@ local openclash_url = "http://" .. lan_ip .. "/cgi-bin/luci/admin/services/openc
 <form method="POST" action="<%=url('admin/services/clash_converter')%>">
     <textarea name="pastebox" rows="10" style="width:100%;" placeholder="Paste VLESS atau VMESS link di sini..."></textarea>
     <br><br>
+
+    <label>
+        Save as (.yaml):
+        <input type="text" name="name_base" placeholder="contoh: myconfig" style="width:200px;">
+    </label>
+    <br><br>
+
     <label>
         <input type="checkbox" name="overwrite" value="1">
         Overwrite existing file
@@ -20,6 +27,7 @@ local openclash_url = "http://" .. lan_ip .. "/cgi-bin/luci/admin/services/openc
         Auto reload OpenClash selepas convert
     </label>
     <br><br>
+
     <button type="submit" class="cbi-button cbi-button-apply">Convert &amp; Preview</button>
     <a href="<%=openclash_url%>" 
        class="cbi-button cbi-button-reset" 
