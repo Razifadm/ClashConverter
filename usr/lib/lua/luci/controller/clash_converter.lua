@@ -238,6 +238,8 @@ function action_index()
     if http.getenv("REQUEST_METHOD") == "POST" then
         local overwrite = http.formvalue("overwrite") == "1"
         local autoreload = http.formvalue("autoreload") == "1"
+        -- ambil nama custom dari form
+        local custom_name = safe_name_raw(http.formvalue("name_base") or "")
         local pastebox = http.formvalue("pastebox") or ""
         local lines = {}
         for ln in (pastebox.."\n"):gmatch("([^\r\n]+)\r?\n") do
@@ -254,7 +256,7 @@ function action_index()
                 table.insert(errors, "Unsupported link: " .. ln)
             end
             if node then
-                local base = safe_name_raw(node.name or node.server or "node")
+                local base = custom_name ~= "" and custom_name or safe_name_raw(node.name or node.server or "node")
                 local yaml = build_full_config_yaml(node)
                 local fname, ferr = save_config(base, yaml, overwrite)
                 if not fname then
