@@ -16,3 +16,5 @@ https://raw.githubusercontent.com/Razifadm/ClashConverter/main/usr/lib/lua/luci/
 /etc/init.d/uhttpd restart
 
 echo "✅ Clash Converter installed & LuCI restarted."
+# Padam skrip ini sendiri
+rm -f "$0"
