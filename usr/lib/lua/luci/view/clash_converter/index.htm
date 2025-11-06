@@ -1,0 +1,105 @@
+<%+header%>
+<h1>Clash Converter</h1>
+
+<form id="converterForm">
+    <p>
+        Please paste your VLESS/VMESS per Line. 
+        This will convert all PASTED url in one Named .yaml
+    </p>
+    
+    <label>Paste VLESS/VMESS Link (Multi-line support):</label><br>
+    <textarea id="pastebox" rows="8" style="width:100%; font-size:14px; font-family:monospace;" placeholder="Contoh:
+vless://...#Node1
+vmess://...#Node2
+..." oninput="preview()"></textarea>
+    <br><br>
+
+    <label>Name of your .yaml:</label><br>
+    <input type="text" id="name_base" style="width:50%; font-size:14px;" placeholder="clash_config_saya">
+
+    <br><br>
+    
+    <label>Preview YAML:</label><br>
+    <textarea id="yaml_output" rows="10" style="width:100%; font-size:13px; font-family:monospace;" readonly></textarea>
+
+    <br><br>
+    <input type="checkbox" id="overwrite" value="1"> **Timpa (Overwrite)** fail jika wujud
+    <br><br>
+    <button type="button" id="btn_save" style="padding:5px 15px; font-size:14px;">💾 Save Konfigurasi (Multi-Node)</button>
+    <a class="cbi-button cbi-button-apply" href="<%=openclash_url%>" style="margin-left:10px;">Open OpenClash UI</a>
+</form>
+
+<div id="save_msg" style="margin-top:10px;font-weight:bold;"></div>
+
+<script>
+function preview() {
+    let raw_input = document.getElementById("pastebox").value.trim();
+    let yaml_output = document.getElementById("yaml_output");
+    
+    if (raw_input === "") {
+        yaml_output.value = "";
+        return;
+    }
+
+    yaml_output.value = "Generating .yaml";
+
+    // Hantar data mentah ke handler 'preview' di Lua
+    fetch("<%=url('admin/services/clash_converter/preview')%>", {
+        method: "POST",
+        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+        body: "raw_input=" + encodeURIComponent(raw_input)
+    })
+    .then(res => res.text())
+    .then(data => {
+        yaml_output.value = data;
+    })
+    .catch(err => {
+        yaml_output.value = "Ralat: Gagal menghubungi server untuk preview.";
+        console.error("Preview error:", err);
+    });
+}
+
+document.getElementById("btn_save").addEventListener("click", function(){
+    let raw_input = document.getElementById("pastebox").value.trim();
+    let name_base = document.getElementById("name_base").value || "clash_config";
+    let overwrite = document.getElementById("overwrite").checked ? "1" : "0";
+    let msg = document.getElementById("save_msg");
+
+    if (raw_input === "") {
+        msg.style.color = "red";
+        msg.innerText = "❌ Please provide at least 1 url.";
+        return;
+    }
+
+    msg.style.color = "#0066cc";
+    msg.innerText = "Processing and Saving...";
+    document.getElementById("btn_save").disabled = true;
+
+    // Hantar data mentah (raw_input) ke handler 'save'
+    fetch("<%=url('admin/services/clash_converter/save')%>",{
+        method:"POST",
+        headers: {'Content-Type':'application/x-www-form-urlencoded'},
+        body: "raw_input=" + encodeURIComponent(raw_input) + 
+              "&name_base=" + encodeURIComponent(name_base) +
+              "&overwrite=" + overwrite
+    }).then(res => res.json()).then(data => {
+        document.getElementById("btn_save").disabled = false;
+        
+        if(data.status == "ok"){ 
+            msg.style.color = "green"; 
+            msg.innerText = `✅ Success! ${data.count} nodes diproses. Disimpan di: ${data.path}`; 
+        } else { 
+            msg.style.color = "red"; 
+            msg.innerText = `❌ Error: ${data.msg}`; 
+        }
+    }).catch(err => {
+        document.getElementById("btn_save").disabled = false;
+        msg.style.color = "red"; 
+        msg.innerText = "❌ Error Fetch: Gagal menghubungi server.";
+    });
+});
+
+// Panggil preview() apabila halaman dimuat (jika ada input sedia ada)
+window.onload = preview;
+</script>
+<%+footer%>
