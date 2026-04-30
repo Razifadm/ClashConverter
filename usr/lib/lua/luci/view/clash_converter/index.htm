@@ -285,7 +285,7 @@
                         <option value="lock">LOCK NODE - lock selected node number</option>
                     </select>
                 </div>
-                <div class="oc-small">Fallback switches only when the current node fails the health check.</div>
+                <div class="oc-small">Fallback switches when the current node fails health check.</div>
             </div>
 
             <div class="oc-field">
@@ -306,11 +306,11 @@
                     <input type="checkbox" id="overwrite" value="1">
                     <span>Enable overwrite</span>
                 </div>
-                <div class="oc-small">If disabled, a new numbered YAML file will be created.</div>
+                <div class="oc-small">If disabled, a numbered YAML file will be created.</div>
             </div>
         </div>
 
-        <div class="oc-section-title">Fallback / Ping Tweak</div>
+        <div class="oc-section-title">Fallback / Ping Stability</div>
 
         <div class="oc-grid">
             <div class="oc-field">
@@ -321,23 +321,23 @@
 
             <div class="oc-field">
                 <label>Interval</label>
-                <input type="number" id="interval" value="30" min="10" step="5">
-                <div class="oc-small">Health check interval in seconds.</div>
+                <input type="number" id="interval" value="180" min="30" step="30">
+                <div class="oc-small">Default 180s to reduce panel/backend ping spikes.</div>
             </div>
 
             <div class="oc-field">
                 <label>Timeout</label>
-                <input type="number" id="timeout" value="3000" min="1000" step="500">
-                <div class="oc-small">Lower timeout switches dead nodes faster.</div>
+                <input type="number" id="timeout" value="5000" min="1000" step="500">
+                <div class="oc-small">Default 5000ms for stable fallback detection.</div>
             </div>
 
             <div class="oc-field">
                 <label>Lazy Check</label>
                 <div class="oc-check">
-                    <input type="checkbox" id="lazy" value="1">
+                    <input type="checkbox" id="lazy" value="1" checked>
                     <span>Enable lazy mode</span>
                 </div>
-                <div class="oc-small">Off is usually more responsive for fallback switching.</div>
+                <div class="oc-small">ON reduces frequent health-check spikes.</div>
             </div>
         </div>
 
@@ -348,22 +348,22 @@
                 <label>Unified Delay</label>
                 <div class="oc-select-wrap">
                     <select id="unified_delay">
-                        <option value="1" selected>ON</option>
-                        <option value="0">OFF</option>
+                        <option value="0" selected>OFF</option>
+                        <option value="1">ON</option>
                     </select>
                 </div>
-                <div class="oc-small">Usually improves delay measurement consistency.</div>
+                <div class="oc-small">OFF is safer for stable panel latency display.</div>
             </div>
 
             <div class="oc-field">
                 <label>TCP Concurrent</label>
                 <div class="oc-select-wrap">
                     <select id="tcp_concurrent">
-                        <option value="1" selected>ON</option>
-                        <option value="0">OFF</option>
+                        <option value="0" selected>OFF</option>
+                        <option value="1">ON</option>
                     </select>
                 </div>
-                <div class="oc-small">Can improve connection setup speed.</div>
+                <div class="oc-small">OFF reduces aggressive connection attempts.</div>
             </div>
 
             <div class="oc-field">
@@ -416,7 +416,7 @@
                     <input type="checkbox" id="block_analytics" value="1">
                     <span>Enable</span>
                 </div>
-                <div class="oc-small">Keep this OFF for better Speedtest app compatibility.</div>
+                <div class="oc-small">Keep OFF for better Speedtest compatibility.</div>
             </div>
 
             <div class="oc-field">
@@ -431,11 +431,11 @@
 
         <div class="oc-note">
             <b>Traffic Flow:</b><br>
-            Fallback → <b>MAIN</b> auto-switches when the current node fails<br>
+            Fallback → <b>MAIN</b> auto-switches when current node fails<br>
             GLOBAL → <b>GLOBAL</b> manual node selection<br>
-            LOCK NODE → <b>MAIN</b> locks the selected node number<br>
+            LOCK NODE → <b>MAIN</b> locks selected node number<br>
             ADS → choose <b>REJECT</b> or <b>DIRECT</b><br>
-            Public internet, including Ookla/Speedtest, goes through the proxy group. LAN/local traffic stays DIRECT.
+            Public internet, including Ookla/Speedtest, goes through proxy. LAN/local stays DIRECT.
         </div>
 
         <div id="node_list" class="oc-nodebox"></div>
@@ -542,13 +542,14 @@
             block_analytics: blockAnalytics.checked ? "1" : "0",
             ads_policy: adsPolicy.value || "reject",
 
-            interval: interval.value || "30",
-            timeout: timeout.value || "3000",
+            interval: interval.value || "180",
+            timeout: timeout.value || "5000",
             health_url: healthUrl.value || "http://www.gstatic.com/generate_204",
+
             lazy: lazy.checked ? "1" : "0",
 
-            unified_delay: unifiedDelay.value || "1",
-            tcp_concurrent: tcpConcurrent.value || "1",
+            unified_delay: unifiedDelay.value || "0",
+            tcp_concurrent: tcpConcurrent.value || "0",
             global_fingerprint: globalFingerprint.value || "chrome"
         }).then(function(data) {
             if (data.status === "ok") {
