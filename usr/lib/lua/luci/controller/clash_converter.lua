@@ -30,7 +30,9 @@ end
 
 local function get_lan_ip()
     local ip = trim(sys.exec("uci get network.lan.ipaddr 2>/dev/null"))
-    if ip == "" then ip = "192.168.1.1" end
+    if ip == "" then
+        ip = "192.168.1.1"
+    end
     return ip
 end
 
@@ -152,7 +154,7 @@ end
 local function parse_vless(line)
     local raw = tostring(line or ""):match("^vless://(.+)")
     if not raw then
-        return nil, "Bukan VLESS"
+        return nil, "Not VLESS"
     end
 
     local before_hash, remark = raw:match("^([^#]+)#?(.*)$")
@@ -160,7 +162,7 @@ local function parse_vless(line)
 
     local userpart, hostpart = before_hash:match("^([^@]+)@(.+)$")
     if not userpart or not hostpart then
-        return nil, "Format VLESS tidak valid"
+        return nil, "Invalid VLESS format"
     end
 
     local hostport, qstr = hostpart:match("^([^?]+)%??(.*)$")
@@ -201,7 +203,7 @@ local function parse_vless(line)
     }
 
     if node.server == "" or node.uuid == "" then
-        return nil, "VLESS kurang server/uuid"
+        return nil, "VLESS missing server/uuid"
     end
 
     return node
@@ -210,12 +212,12 @@ end
 local function parse_vmess(line)
     local b64 = tostring(line or ""):match("^vmess://(.+)")
     if not b64 then
-        return nil, "Bukan VMESS"
+        return nil, "Not VMESS"
     end
 
     local decoded = base64_decode(b64)
     if not decoded then
-        return nil, "Gagal decode VMESS base64"
+        return nil, "Failed to decode VMESS base64"
     end
 
     local ok, obj = pcall(function()
@@ -223,7 +225,7 @@ local function parse_vmess(line)
     end)
 
     if not ok or not obj then
-        return nil, "Gagal parse JSON VMESS"
+        return nil, "Failed to parse VMESS JSON"
     end
 
     local network = obj.net or obj.type or "ws"
@@ -255,7 +257,7 @@ local function parse_vmess(line)
     }
 
     if node.server == "" or node.uuid == "" then
-        return nil, "VMESS kurang server/uuid"
+        return nil, "VMESS missing server/uuid"
     end
 
     return node
@@ -273,7 +275,7 @@ local function parse_nodes(input)
         elseif line:match("^vmess://") then
             node, err = parse_vmess(line)
         else
-            err = "Skip: bukan VLESS/VMESS"
+            err = "Skipped: not VLESS/VMESS"
         end
 
         if node then
@@ -294,8 +296,8 @@ end
 local function append_base_config(lines, opts)
     opts = opts or {}
 
-    local unified_delay = opts.unified_delay ~= false
-    local tcp_concurrent = opts.tcp_concurrent ~= false
+    local unified_delay = opts.unified_delay == true
+    local tcp_concurrent = opts.tcp_concurrent == true
     local global_fingerprint = opts.global_fingerprint or "chrome"
 
     table.insert(lines, "port: 7890")
@@ -308,13 +310,10 @@ local function append_base_config(lines, opts)
     table.insert(lines, "mode: rule")
     table.insert(lines, "log-level: silent")
     table.insert(lines, "ipv6: false")
-
     table.insert(lines, "unified-delay: " .. yaml_bool(unified_delay))
     table.insert(lines, "tcp-fast-open: true")
     table.insert(lines, "tcp-concurrent: " .. yaml_bool(tcp_concurrent))
-    table.insert(lines, "find-process-mode: strict")
     table.insert(lines, "global-client-fingerprint: " .. yaml_quote(global_fingerprint))
-
     table.insert(lines, "external-controller: 0.0.0.0:9090")
     table.insert(lines, "secret: ''")
     table.insert(lines, "")
@@ -334,8 +333,10 @@ local function append_base_config(lines, opts)
     table.insert(lines, "    - any:53")
     table.insert(lines, "")
 
+    -- Lighter sniffer to reduce Yacd/OpenClash/Nikki panel ping spikes.
     table.insert(lines, "sniffer:")
     table.insert(lines, "  enable: true")
+    table.insert(lines, "  override-destination: false")
     table.insert(lines, "  sniff:")
     table.insert(lines, "    TLS:")
     table.insert(lines, "      ports:")
@@ -345,16 +346,8 @@ local function append_base_config(lines, opts)
     table.insert(lines, "      ports:")
     table.insert(lines, "        - 80")
     table.insert(lines, "        - 8080-8880")
-    table.insert(lines, "      override-destination: true")
-    table.insert(lines, "  sniffing:")
-    table.insert(lines, "    - tls")
-    table.insert(lines, "    - http")
-    table.insert(lines, "  force-domain:")
-    table.insert(lines, "    - +.speedtest.net")
-    table.insert(lines, "    - +.ookla.com")
-    table.insert(lines, "    - +.ooklaserver.net")
     table.insert(lines, "")
-    
+
     table.insert(lines, "dns:")
     table.insert(lines, "  enable: true")
     table.insert(lines, "  listen: 127.0.0.1:7874")
@@ -438,7 +431,7 @@ local function append_proxy(lines, node)
         table.insert(lines, "      grpc-service-name: " .. yaml_quote(node.grpc_service_name or ""))
     end
 
-    -- Requested: always UDP true
+    -- Always UDP true, as requested.
     table.insert(lines, "    udp: true")
     table.insert(lines, "    tfo: true")
 end
@@ -457,10 +450,10 @@ local function append_proxy_groups(lines, nodes, opts)
     opts = opts or {}
 
     local yaml_type = opts.yaml_type or "fallback"
-    local interval = tonumber(opts.interval) or 30
-    local timeout = tonumber(opts.timeout) or 3000
+    local interval = tonumber(opts.interval) or 180
+    local timeout = tonumber(opts.timeout) or 5000
     local health_url = trim(opts.health_url or "http://www.gstatic.com/generate_204")
-    local lazy = opts.lazy == true
+    local lazy = opts.lazy ~= false
     local lock_index = tonumber(opts.lock_index or 1) or 1
 
     local names = {}
@@ -555,7 +548,7 @@ local function append_rules(lines, opts)
 
     table.insert(lines, "rules:")
 
-    -- Speedtest / Ookla paksa proxy dahulu
+    -- Speedtest/Ookla must use proxy group.
     table.insert(lines, "  - DOMAIN-SUFFIX,speedtest.net," .. final_group)
     table.insert(lines, "  - DOMAIN-SUFFIX,ookla.com," .. final_group)
     table.insert(lines, "  - DOMAIN-SUFFIX,ooklaserver.net," .. final_group)
@@ -567,13 +560,13 @@ local function append_rules(lines, opts)
         table.insert(lines, "  - DOMAIN-KEYWORD,ads,ADS")
         table.insert(lines, "  - DOMAIN-KEYWORD,tracking,ADS")
 
-        -- Analytics jangan terlalu agresif default, sebab app speedtest kadang perlukan endpoint telemetry
+        -- Keep analytics optional. It can break some speedtest/app telemetry.
         if opts.block_analytics == true then
             table.insert(lines, "  - DOMAIN-KEYWORD,analytics,ADS")
         end
     end
 
-    -- LAN/local sahaja direct
+    -- LAN/local only.
     table.insert(lines, "  - GEOIP,LAN,DIRECT")
     table.insert(lines, "  - DOMAIN-SUFFIX,local,DIRECT")
     table.insert(lines, "  - DOMAIN-SUFFIX,lan,DIRECT")
@@ -583,7 +576,7 @@ local function append_rules(lines, opts)
     table.insert(lines, "  - IP-CIDR,192.168.0.0/16,DIRECT,no-resolve")
     table.insert(lines, "  - IP-CIDR,224.0.0.0/4,DIRECT,no-resolve")
 
-    -- Semua internet public masuk proxy group
+    -- All public internet must use proxy group.
     table.insert(lines, "  - MATCH," .. final_group)
 end
 
@@ -611,7 +604,9 @@ local function unique_filename(dir, base, overwrite)
     ensure_dir(dir)
 
     base = safe_name_raw(base or "clash_config")
-    if base == "" then base = "clash_config" end
+    if base == "" then
+        base = "clash_config"
+    end
 
     local fname = string.format("%s/%s.yaml", dir, base)
 
@@ -678,7 +673,7 @@ function action_generate()
     if trim(input) == "" then
         http.write_json({
             status = "error",
-            msg = "Paste VLESS/VMESS kosong"
+            msg = "VLESS/VMESS input is empty"
         })
         return
     end
@@ -688,7 +683,7 @@ function action_generate()
     if #nodes == 0 then
         http.write_json({
             status = "error",
-            msg = "Tiada node valid dijumpai",
+            msg = "No valid node found",
             errors = errors
         })
         return
@@ -701,15 +696,19 @@ function action_generate()
         block_analytics = http.formvalue("block_analytics") == "1",
         ads_policy = http.formvalue("ads_policy") or "reject",
 
-        interval = tonumber(http.formvalue("interval") or "30") or 30,
-        timeout = tonumber(http.formvalue("timeout") or "3000") or 3000,
+        interval = tonumber(http.formvalue("interval") or "180") or 180,
+        timeout = tonumber(http.formvalue("timeout") or "5000") or 5000,
         health_url = http.formvalue("health_url") or "http://www.gstatic.com/generate_204",
-        lazy = http.formvalue("lazy") == "1",
+
+        -- Default lazy ON to reduce frequent panel/backend ping spike.
+        lazy = http.formvalue("lazy") ~= "0",
 
         lock_index = tonumber(http.formvalue("lock_index") or "1") or 1,
 
-        unified_delay = http.formvalue("unified_delay") ~= "0",
-        tcp_concurrent = http.formvalue("tcp_concurrent") ~= "0",
+        -- Default OFF to reduce spike.
+        unified_delay = http.formvalue("unified_delay") == "1",
+        tcp_concurrent = http.formvalue("tcp_concurrent") == "1",
+
         global_fingerprint = http.formvalue("global_fingerprint") or "chrome"
     }
 
@@ -741,7 +740,7 @@ function action_save()
     if trim(yaml_input) == "" then
         http.write_json({
             status = "error",
-            msg = "YAML kosong"
+            msg = "YAML is empty"
         })
         return
     end
