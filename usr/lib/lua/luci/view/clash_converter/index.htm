@@ -1,105 +1,683 @@
 <%+header%>
-<h1>Clash Converter</h1>
 
-<form id="converterForm">
-    <p>
-        Please paste your VLESS/VMESS per Line. 
-        This will convert all PASTED url in one Named .yaml
-    </p>
-    
-    <label>Paste VLESS/VMESS Link (Multi-line support):</label><br>
-    <textarea id="pastebox" rows="8" style="width:100%; font-size:14px; font-family:monospace;" placeholder="Examples:
-vless://...#Node1
-vmess://...#Node2
-..." oninput="preview()"></textarea>
-    <br><br>
-
-    <label>Name of your .yaml:</label><br>
-    <input type="text" id="name_base" style="width:50%; font-size:14px;" placeholder="yaml name?">
-
-    <br><br>
-    
-    <label>Preview YAML:</label><br>
-    <textarea id="yaml_output" rows="10" style="width:100%; font-size:13px; font-family:monospace;" readonly></textarea>
-
-    <br><br>
-    <input type="checkbox" id="overwrite" value="1"> **(Overwrite)** if name exist
-    <br><br>
-    <button type="button" id="btn_save" style="padding:5px 15px; font-size:14px;">💾 Save </button>
-    <a class="cbi-button cbi-button-apply" href="<%=openclash_url%>" style="margin-left:10px;">Open OpenClash UI</a>
-</form>
-
-<div id="save_msg" style="margin-top:10px;font-weight:bold;"></div>
-
-<script>
-function preview() {
-    let raw_input = document.getElementById("pastebox").value.trim();
-    let yaml_output = document.getElementById("yaml_output");
-    
-    if (raw_input === "") {
-        yaml_output.value = "";
-        return;
-    }
-
-    yaml_output.value = "Generating .yaml";
-
-    // Hantar data mentah ke handler 'preview' di Lua
-    fetch("<%=url('admin/services/clash_converter/preview')%>", {
-        method: "POST",
-        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-        body: "raw_input=" + encodeURIComponent(raw_input)
-    })
-    .then(res => res.text())
-    .then(data => {
-        yaml_output.value = data;
-    })
-    .catch(err => {
-        yaml_output.value = "Ralat: Gagal menghubungi server untuk preview.";
-        console.error("Preview error:", err);
-    });
+<style>
+.oc-wrap {
+    max-width: 1180px;
+    margin: 0 auto;
 }
 
-document.getElementById("btn_save").addEventListener("click", function(){
-    let raw_input = document.getElementById("pastebox").value.trim();
-    let name_base = document.getElementById("name_base").value || "clash_config";
-    let overwrite = document.getElementById("overwrite").checked ? "1" : "0";
-    let msg = document.getElementById("save_msg");
+.oc-title {
+    font-size: 26px;
+    font-weight: 900;
+    margin: 10px 0 18px;
+    letter-spacing: .3px;
+}
 
-    if (raw_input === "") {
-        msg.style.color = "red";
-        msg.innerText = "❌ Please provide at least 1 url.";
-        return;
+.oc-panel {
+    background: linear-gradient(135deg, rgba(255, 30, 140, .16), rgba(0, 0, 0, .42));
+    border: 1px solid rgba(255, 255, 255, .15);
+    border-radius: 18px;
+    padding: 18px;
+    box-shadow: 0 12px 35px rgba(0, 0, 0, .22);
+    margin-bottom: 16px;
+}
+
+.oc-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(130px, 1fr));
+    gap: 12px;
+    margin-bottom: 14px;
+}
+
+.oc-grid-2 {
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+    gap: 12px;
+    margin-bottom: 14px;
+}
+
+.oc-field label {
+    display: block;
+    font-weight: 800;
+    margin-bottom: 6px;
+}
+
+.oc-field input,
+.oc-field select,
+.oc-textarea {
+    width: 100%;
+    box-sizing: border-box;
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, .18);
+    background: rgba(0, 0, 0, .30);
+    color: inherit;
+    padding: 10px 12px;
+    outline: none;
+}
+
+.oc-field input:focus,
+.oc-field select:focus,
+.oc-textarea:focus {
+    border-color: rgba(255, 45, 151, .75);
+    box-shadow: 0 0 0 2px rgba(255, 45, 151, .18);
+}
+
+.oc-select-wrap {
+    position: relative;
+}
+
+.oc-select-wrap select {
+    appearance: none;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    padding-right: 42px;
+    cursor: pointer;
+}
+
+.oc-select-wrap::after {
+    content: "▼";
+    position: absolute;
+    right: 14px;
+    top: 50%;
+    transform: translateY(-50%);
+    pointer-events: none;
+    font-size: 12px;
+    font-weight: 900;
+    color: #ff4faa;
+    text-shadow: 0 0 10px rgba(255, 45, 151, .8);
+}
+
+.oc-textarea {
+    font-family: monospace;
+    font-size: 13px;
+    min-height: 170px;
+    resize: vertical;
+}
+
+#yaml_output {
+    min-height: 470px;
+}
+
+.oc-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: center;
+    margin-top: 12px;
+}
+
+.oc-btn {
+    border: 0;
+    border-radius: 12px;
+    padding: 9px 16px;
+    cursor: pointer;
+    font-weight: 900;
+    background: linear-gradient(135deg, #ff2d97, #ffffff);
+    color: #111;
+    box-shadow: 0 0 18px rgba(255, 45, 151, .28);
+}
+
+.oc-btn:hover {
+    filter: brightness(1.06);
+}
+
+.oc-btn.secondary {
+    background: rgba(255, 255, 255, .12);
+    color: inherit;
+    border: 1px solid rgba(255, 255, 255, .18);
+    box-shadow: none;
+    text-decoration: none;
+}
+
+.oc-btn.danger {
+    background: rgba(255, 50, 70, .18);
+    color: inherit;
+    border: 1px solid rgba(255, 50, 70, .35);
+    box-shadow: none;
+}
+
+.oc-msg {
+    margin-top: 12px;
+    padding: 10px 12px;
+    border-radius: 12px;
+    display: none;
+    white-space: pre-wrap;
+}
+
+.oc-msg.ok {
+    display: block;
+    color: #7dffb0;
+    background: rgba(0, 160, 80, .12);
+    border: 1px solid rgba(0, 220, 120, .25);
+}
+
+.oc-msg.err {
+    display: block;
+    color: #ff9a9a;
+    background: rgba(200, 0, 40, .12);
+    border: 1px solid rgba(255, 80, 100, .25);
+}
+
+.oc-note {
+    opacity: .84;
+    font-size: 13px;
+    line-height: 1.45;
+    margin-top: 8px;
+}
+
+.oc-check {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    font-weight: 800;
+    min-height: 42px;
+}
+
+.oc-check input {
+    width: auto;
+}
+
+.oc-nodebox {
+    display: none;
+    margin-top: 10px;
+    padding: 10px 12px;
+    border-radius: 12px;
+    background: rgba(255, 255, 255, .08);
+    border: 1px solid rgba(255, 255, 255, .14);
+    font-family: monospace;
+    font-size: 12px;
+    white-space: pre-wrap;
+}
+
+.oc-badge {
+    display: inline-block;
+    margin-left: 8px;
+    padding: 3px 8px;
+    border-radius: 999px;
+    background: rgba(255, 45, 151, .18);
+    border: 1px solid rgba(255, 45, 151, .35);
+    font-size: 12px;
+    font-weight: 800;
+}
+
+.oc-small {
+    font-size: 12px;
+    opacity: .75;
+    margin-top: 5px;
+    line-height: 1.35;
+}
+
+.oc-section-title {
+    font-size: 15px;
+    font-weight: 900;
+    margin: 14px 0 10px;
+    padding-left: 10px;
+    border-left: 4px solid #ff4faa;
+}
+
+.oc-top-row {
+    margin-bottom: 14px;
+}
+
+@media (max-width: 900px) {
+    .oc-grid,
+    .oc-grid-2 {
+        grid-template-columns: repeat(2, minmax(130px, 1fr));
+    }
+}
+
+@media (max-width: 520px) {
+    .oc-grid,
+    .oc-grid-2 {
+        grid-template-columns: 1fr;
     }
 
-    msg.style.color = "#0066cc";
-    msg.innerText = "Processing and Saving...";
-    document.getElementById("btn_save").disabled = true;
+    .oc-actions {
+        align-items: stretch;
+        flex-direction: column;
+    }
 
-    // Hantar data mentah (raw_input) ke handler 'save'
-    fetch("<%=url('admin/services/clash_converter/save')%>",{
-        method:"POST",
-        headers: {'Content-Type':'application/x-www-form-urlencoded'},
-        body: "raw_input=" + encodeURIComponent(raw_input) + 
-              "&name_base=" + encodeURIComponent(name_base) +
-              "&overwrite=" + overwrite
-    }).then(res => res.json()).then(data => {
-        document.getElementById("btn_save").disabled = false;
-        
-        if(data.status == "ok"){ 
-            msg.style.color = "green"; 
-            msg.innerText = `✅ Success! ${data.count} nodes diproses. Disimpan di: ${data.path}`; 
-        } else { 
-            msg.style.color = "red"; 
-            msg.innerText = `❌ Error: ${data.msg}`; 
+    .oc-btn,
+    .oc-btn.secondary {
+        width: 100%;
+        text-align: center;
+    }
+}
+</style>
+
+<div class="oc-wrap">
+    <div class="oc-title">
+        OC Converter
+        <span class="oc-badge">VLESS / VMESS → YAML</span>
+    </div>
+
+    <div class="oc-panel">
+        <div class="oc-section-title">Output File</div>
+
+        <div class="oc-grid-2 oc-top-row">
+            <div class="oc-field">
+                <label>YAML File Name</label>
+                <input type="text" id="name_base" placeholder="example: radu_config" value="radu_config">
+                <div class="oc-small">This name will be used when saving the generated YAML file.</div>
+            </div>
+
+            <div class="oc-field">
+                <label>Save Target</label>
+                <div class="oc-select-wrap">
+                    <select id="target">
+                        <option value="openclash" selected>OpenClash</option>
+                        <option value="nikki">Nikki</option>
+                    </select>
+                </div>
+                <div class="oc-small">Choose where the YAML file will be saved.</div>
+            </div>
+        </div>
+
+        <div class="oc-section-title">YAML Mode</div>
+
+        <div class="oc-grid">
+            <div class="oc-field">
+                <label>YAML Type</label>
+                <div class="oc-select-wrap">
+                    <select id="yaml_type">
+                        <option value="fallback" selected>Fallback - auto switch when node is dead</option>
+                        <option value="global">GLOBAL - manual node selection</option>
+                        <option value="lock">LOCK NODE - lock selected node number</option>
+                    </select>
+                </div>
+                <div class="oc-small">Fallback switches only when the current node fails the health check.</div>
+            </div>
+
+            <div class="oc-field">
+                <label>Lock Node Number</label>
+                <input type="number" id="lock_index" value="1" min="1" step="1">
+                <div class="oc-small">Used only in LOCK NODE mode. 1 means the first parsed node.</div>
+            </div>
+
+            <div class="oc-field">
+                <label>Status</label>
+                <input type="text" id="node_count" value="0 node" readonly>
+                <div class="oc-small">Shows how many valid nodes were parsed.</div>
+            </div>
+
+            <div class="oc-field">
+                <label>Overwrite Existing File</label>
+                <div class="oc-check">
+                    <input type="checkbox" id="overwrite" value="1">
+                    <span>Enable overwrite</span>
+                </div>
+                <div class="oc-small">If disabled, a new numbered YAML file will be created.</div>
+            </div>
+        </div>
+
+        <div class="oc-section-title">Fallback / Ping Tweak</div>
+
+        <div class="oc-grid">
+            <div class="oc-field">
+                <label>Health Check URL</label>
+                <input type="text" id="health_url" value="http://www.gstatic.com/generate_204">
+                <div class="oc-small">Used to check whether a node is alive.</div>
+            </div>
+
+            <div class="oc-field">
+                <label>Interval</label>
+                <input type="number" id="interval" value="30" min="10" step="5">
+                <div class="oc-small">Health check interval in seconds.</div>
+            </div>
+
+            <div class="oc-field">
+                <label>Timeout</label>
+                <input type="number" id="timeout" value="3000" min="1000" step="500">
+                <div class="oc-small">Lower timeout switches dead nodes faster.</div>
+            </div>
+
+            <div class="oc-field">
+                <label>Lazy Check</label>
+                <div class="oc-check">
+                    <input type="checkbox" id="lazy" value="1">
+                    <span>Enable lazy mode</span>
+                </div>
+                <div class="oc-small">Off is usually more responsive for fallback switching.</div>
+            </div>
+        </div>
+
+        <div class="oc-section-title">Performance Options</div>
+
+        <div class="oc-grid">
+            <div class="oc-field">
+                <label>Unified Delay</label>
+                <div class="oc-select-wrap">
+                    <select id="unified_delay">
+                        <option value="1" selected>ON</option>
+                        <option value="0">OFF</option>
+                    </select>
+                </div>
+                <div class="oc-small">Usually improves delay measurement consistency.</div>
+            </div>
+
+            <div class="oc-field">
+                <label>TCP Concurrent</label>
+                <div class="oc-select-wrap">
+                    <select id="tcp_concurrent">
+                        <option value="1" selected>ON</option>
+                        <option value="0">OFF</option>
+                    </select>
+                </div>
+                <div class="oc-small">Can improve connection setup speed.</div>
+            </div>
+
+            <div class="oc-field">
+                <label>Fingerprint</label>
+                <div class="oc-select-wrap">
+                    <select id="global_fingerprint">
+                        <option value="chrome" selected>chrome</option>
+                        <option value="firefox">firefox</option>
+                        <option value="safari">safari</option>
+                        <option value="ios">ios</option>
+                        <option value="android">android</option>
+                        <option value="random">random</option>
+                    </select>
+                </div>
+                <div class="oc-small">Chrome is the safest default for most nodes.</div>
+            </div>
+
+            <div class="oc-field">
+                <label>Always UDP</label>
+                <input type="text" value="true" readonly>
+                <div class="oc-small">All generated nodes will use udp: true.</div>
+            </div>
+        </div>
+
+        <div class="oc-section-title">ADS Options</div>
+
+        <div class="oc-grid">
+            <div class="oc-field">
+                <label>Block Ads</label>
+                <div class="oc-check">
+                    <input type="checkbox" id="block_ads" value="1" checked>
+                    <span>Enable ADS group</span>
+                </div>
+            </div>
+
+            <div class="oc-field">
+                <label>ADS Default Action</label>
+                <div class="oc-select-wrap">
+                    <select id="ads_policy">
+                        <option value="reject" selected>REJECT - block ads</option>
+                        <option value="direct">DIRECT - bypass ads</option>
+                    </select>
+                </div>
+                <div class="oc-small">ADS group can use REJECT or DIRECT.</div>
+            </div>
+
+            <div class="oc-field">
+                <label>Block Analytics</label>
+                <div class="oc-check">
+                    <input type="checkbox" id="block_analytics" value="1">
+                    <span>Enable</span>
+                </div>
+                <div class="oc-small">Keep this OFF for better Speedtest app compatibility.</div>
+            </div>
+
+            <div class="oc-field">
+                <label>Auto Convert</label>
+                <input type="text" value="enabled" readonly>
+                <div class="oc-small">YAML updates automatically after paste or option changes.</div>
+            </div>
+        </div>
+
+        <label><b>Paste VLESS/VMESS Links</b></label>
+        <textarea id="pastebox" class="oc-textarea" placeholder="Paste multiple VLESS/VMESS links here. One link per line."></textarea>
+
+        <div class="oc-note">
+            <b>Traffic Flow:</b><br>
+            Fallback → <b>MAIN</b> auto-switches when the current node fails<br>
+            GLOBAL → <b>GLOBAL</b> manual node selection<br>
+            LOCK NODE → <b>MAIN</b> locks the selected node number<br>
+            ADS → choose <b>REJECT</b> or <b>DIRECT</b><br>
+            Public internet, including Ookla/Speedtest, goes through the proxy group. LAN/local traffic stays DIRECT.
+        </div>
+
+        <div id="node_list" class="oc-nodebox"></div>
+        <div id="generate_msg" class="oc-msg"></div>
+    </div>
+
+    <div class="oc-panel">
+        <label><b>Preview / Edit YAML</b></label>
+        <textarea id="yaml_output" class="oc-textarea" placeholder="Generated YAML will appear here automatically..."></textarea>
+
+        <div class="oc-actions">
+            <button type="button" id="btn_save" class="oc-btn">Save YAML</button>
+            <button type="button" id="btn_copy" class="oc-btn secondary">Copy YAML</button>
+            <a class="oc-btn secondary" href="<%=openclash_url%>">Open OpenClash UI</a>
+            <a class="oc-btn secondary" href="<%=nikki_url%>">Open Nikki UI</a>
+            <button type="button" id="btn_clear" class="oc-btn danger">Clear</button>
+        </div>
+
+        <div id="save_msg" class="oc-msg"></div>
+    </div>
+</div>
+
+<script>
+(function() {
+    var generateUrl = "<%=url('admin/services/clash_converter/generate')%>";
+    var saveUrl = "<%=url('admin/services/clash_converter/save')%>";
+
+    var pastebox = document.getElementById("pastebox");
+    var yamlOutput = document.getElementById("yaml_output");
+
+    var yamlType = document.getElementById("yaml_type");
+    var target = document.getElementById("target");
+    var lockIndex = document.getElementById("lock_index");
+    var nameBase = document.getElementById("name_base");
+
+    var healthUrl = document.getElementById("health_url");
+    var interval = document.getElementById("interval");
+    var timeout = document.getElementById("timeout");
+    var lazy = document.getElementById("lazy");
+
+    var unifiedDelay = document.getElementById("unified_delay");
+    var tcpConcurrent = document.getElementById("tcp_concurrent");
+    var globalFingerprint = document.getElementById("global_fingerprint");
+
+    var blockAds = document.getElementById("block_ads");
+    var adsPolicy = document.getElementById("ads_policy");
+    var blockAnalytics = document.getElementById("block_analytics");
+    var overwrite = document.getElementById("overwrite");
+
+    var nodeCount = document.getElementById("node_count");
+    var nodeList = document.getElementById("node_list");
+    var generateMsg = document.getElementById("generate_msg");
+    var saveMsg = document.getElementById("save_msg");
+
+    var debounceTimer = null;
+
+    function setMsg(el, type, text) {
+        el.className = "oc-msg " + (type || "");
+        el.textContent = text || "";
+
+        if (!text) {
+            el.style.display = "none";
+        } else {
+            el.style.display = "block";
         }
-    }).catch(err => {
-        document.getElementById("btn_save").disabled = false;
-        msg.style.color = "red"; 
-        msg.innerText = "❌ Error Fetch: Gagal menghubungi server.";
-    });
-});
+    }
 
-// Panggil preview() apabila halaman dimuat (jika ada input sedia ada)
-window.onload = preview;
+    function postForm(url, data) {
+        var body = Object.keys(data).map(function(k) {
+            return encodeURIComponent(k) + "=" + encodeURIComponent(data[k]);
+        }).join("&");
+
+        return fetch(url, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/x-www-form-urlencoded"
+            },
+            body: body
+        }).then(function(res) {
+            return res.json();
+        });
+    }
+
+    function generateYaml() {
+        var links = pastebox.value.trim();
+
+        if (!links) {
+            yamlOutput.value = "";
+            nodeCount.value = "0 node";
+            nodeList.style.display = "none";
+            setMsg(generateMsg, "", "");
+            return;
+        }
+
+        setMsg(generateMsg, "ok", "Auto converting...");
+
+        postForm(generateUrl, {
+            links: links,
+
+            yaml_type: yamlType.value,
+            lock_index: lockIndex.value || "1",
+
+            block_ads: blockAds.checked ? "1" : "0",
+            block_analytics: blockAnalytics.checked ? "1" : "0",
+            ads_policy: adsPolicy.value || "reject",
+
+            interval: interval.value || "30",
+            timeout: timeout.value || "3000",
+            health_url: healthUrl.value || "http://www.gstatic.com/generate_204",
+            lazy: lazy.checked ? "1" : "0",
+
+            unified_delay: unifiedDelay.value || "1",
+            tcp_concurrent: tcpConcurrent.value || "1",
+            global_fingerprint: globalFingerprint.value || "chrome"
+        }).then(function(data) {
+            if (data.status === "ok") {
+                yamlOutput.value = data.yaml || "";
+                nodeCount.value = String(data.count || 0) + " node";
+
+                if (data.nodes && data.nodes.length) {
+                    nodeList.style.display = "block";
+                    nodeList.textContent = "Parsed nodes:\n- " + data.nodes.join("\n- ");
+                } else {
+                    nodeList.style.display = "none";
+                }
+
+                var msg = "Auto converted. Valid nodes: " + String(data.count || 0);
+
+                if (data.errors && data.errors.length) {
+                    msg += "\n\nWarning / skipped lines:";
+
+                    data.errors.forEach(function(e) {
+                        msg += "\n- " + (e.error || "error");
+                    });
+                }
+
+                setMsg(generateMsg, "ok", msg);
+            } else {
+                yamlOutput.value = "";
+                nodeCount.value = "0 node";
+                nodeList.style.display = "none";
+
+                var err = data.msg || "Auto convert failed.";
+
+                if (data.errors && data.errors.length) {
+                    data.errors.forEach(function(e) {
+                        err += "\n- " + (e.error || "error");
+                    });
+                }
+
+                setMsg(generateMsg, "err", err);
+            }
+        }).catch(function() {
+            setMsg(generateMsg, "err", "Fetch error while auto converting YAML.");
+        });
+    }
+
+    function debounceGenerate() {
+        clearTimeout(debounceTimer);
+
+        debounceTimer = setTimeout(function() {
+            generateYaml();
+        }, 600);
+    }
+
+    document.getElementById("btn_save").addEventListener("click", function() {
+        var yaml = yamlOutput.value.trim();
+
+        if (!yaml) {
+            setMsg(saveMsg, "err", "YAML is empty. Paste VLESS/VMESS links first.");
+            return;
+        }
+
+        setMsg(saveMsg, "ok", "Saving...");
+
+        postForm(saveUrl, {
+            yaml_input: yaml,
+            name_base: nameBase.value || "clash_config",
+            overwrite: overwrite.checked ? "1" : "0",
+            target: target.value || "openclash"
+        }).then(function(data) {
+            if (data.status === "ok") {
+                setMsg(saveMsg, "ok", "Saved:\n" + data.path);
+            } else {
+                setMsg(saveMsg, "err", "Error:\n" + (data.msg || "Save failed."));
+            }
+        }).catch(function() {
+            setMsg(saveMsg, "err", "Fetch error while saving YAML.");
+        });
+    });
+
+    document.getElementById("btn_copy").addEventListener("click", function() {
+        var text = yamlOutput.value || "";
+
+        if (!text.trim()) {
+            setMsg(saveMsg, "err", "YAML is empty.");
+            return;
+        }
+
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(text).then(function() {
+                setMsg(saveMsg, "ok", "YAML copied.");
+            }).catch(function() {
+                yamlOutput.select();
+                document.execCommand("copy");
+                setMsg(saveMsg, "ok", "YAML copied.");
+            });
+        } else {
+            yamlOutput.select();
+            document.execCommand("copy");
+            setMsg(saveMsg, "ok", "YAML copied.");
+        }
+    });
+
+    document.getElementById("btn_clear").addEventListener("click", function() {
+        pastebox.value = "";
+        yamlOutput.value = "";
+        nodeCount.value = "0 node";
+        nodeList.style.display = "none";
+        setMsg(generateMsg, "", "");
+        setMsg(saveMsg, "", "");
+    });
+
+    [
+        pastebox,
+        yamlType,
+        lockIndex,
+        healthUrl,
+        interval,
+        timeout,
+        lazy,
+        unifiedDelay,
+        tcpConcurrent,
+        globalFingerprint,
+        blockAds,
+        adsPolicy,
+        blockAnalytics
+    ].forEach(function(el) {
+        el.addEventListener("input", debounceGenerate);
+        el.addEventListener("change", debounceGenerate);
+    });
+})();
 </script>
+
 <%+footer%>
