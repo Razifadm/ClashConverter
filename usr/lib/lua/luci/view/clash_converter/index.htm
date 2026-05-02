@@ -295,7 +295,7 @@
             <div class="oc-field">
                 <label>Mode</label>
                 <input type="text" value="SELECTOR → NODE-FALLBACK" readonly>
-                <div class="oc-small">Pick a preferred node in SELECTOR; it still has fallback backup.</div>
+                <div class="oc-small">Pick preferred node in SELECTOR; it still has fallback backup.</div>
             </div>
 
             <div class="oc-field">
@@ -310,7 +310,7 @@
         <div class="oc-note">
             mixed-port: <b>7890</b><br>
             DNS: <b>redir-host</b>, TUN: <b>disabled</b>, Sniffer: <b>disabled</b><br>
-            Fallback: <b>interval 30s</b>, <b>timeout 15000ms</b>, <b>lazy false</b>, <b>max-failed-times 2</b><br>
+            Fallback: <b>interval 120s</b>, <b>timeout 15000ms</b>, <b>lazy true</b>, <b>max-failed-times 3</b><br>
             Speedtest/Ookla rules are placed <b>above ADS</b><br>
             Rule: <b>MATCH,SELECTOR</b>
         </div>
