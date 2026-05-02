@@ -10,6 +10,16 @@ local tpl  = require("luci.template")
 local SAVE_DIR_OPENCLASH = "/etc/openclash/config"
 local SAVE_DIR_NIKKI     = "/etc/nikki/profiles"
 
+-- Presets
+local MIXED_PORT            = 7890
+local DEFAULT_HEALTH_URL    = "http://cp.cloudflare.com/generate_204"
+local DEFAULT_INTERVAL      = 30
+local DEFAULT_TIMEOUT       = 15000
+local DEFAULT_LAZY          = false
+local DEFAULT_FAILED_TIMES  = 2
+local DEFAULT_FINGERPRINT   = "chrome"
+local DEFAULT_ADS_POLICY    = "reject"
+
 local function trim(s)
     return tostring(s or ""):gsub("^%s+", ""):gsub("%s+$", "")
 end
@@ -92,10 +102,37 @@ local function safe_name_raw(name)
     s = s:gsub("[^%w%-%._%s]", "-")
     s = s:gsub("%s+", "-")
     s = s:gsub("%-+", "-")
+    s = s:gsub("^%-+", "")
+    s = s:gsub("%-+$", "")
+    s = s:upper()
+
+    if s == "" then
+        s = "NODE"
+    end
+
+    return s
+end
+
+local function safe_file_name(name)
+    name = trim(name)
+
+    if name == "" then
+        name = "clash_config"
+    end
+
+    local s = name
+    s = s:gsub("[\r\n\t]", " ")
+    s = s:gsub("^%s+", "")
+    s = s:gsub("%s+$", "")
+    s = s:gsub("[^%w%-%._%s]", "-")
+    s = s:gsub("%s+", "-")
+    s = s:gsub("%-+", "-")
+    s = s:gsub("^%-+", "")
+    s = s:gsub("%-+$", "")
     s = s:lower()
 
     if s == "" then
-        s = "node"
+        s = "clash_config"
     end
 
     return s
@@ -135,7 +172,7 @@ local function unique_node_names(nodes)
     local used = {}
 
     for _, node in ipairs(nodes) do
-        local base = safe_name_raw(node.name or node.server or node.raw_type or "node")
+        local base = safe_name_raw(node.name or node.server or node.raw_type or "NODE")
         local name = base
         local i = 2
 
@@ -179,7 +216,7 @@ local function parse_vless(line)
 
     local node = {
         raw_type = "vless",
-        name = remark ~= "" and remark or q.remark or q.name or host or "vless-node",
+        name = remark ~= "" and remark or q.remark or q.name or host or "VLESS",
         server = host or "",
         port = tonumber(port) or 443,
         uuid = userpart or q.uuid or "",
@@ -188,9 +225,6 @@ local function parse_vless(line)
         servername = q.sni or q.servername or q.host or "",
         network = network,
 
-        udp = true,
-        tfo = true,
-
         ws_path = q.path or q.wsPath or "/",
         ws_host = q.host or "",
 
@@ -198,7 +232,7 @@ local function parse_vless(line)
 
         flow = q.flow or "",
         encryption = q.encryption or "none",
-        client_fingerprint = q.fp or q.fingerprint or "chrome",
+        client_fingerprint = q.fp or q.fingerprint or DEFAULT_FINGERPRINT,
         alpn = q.alpn or ""
     }
 
@@ -233,7 +267,7 @@ local function parse_vmess(line)
 
     local node = {
         raw_type = "vmess",
-        name = obj.ps or obj.tag or obj.remarks or obj.add or obj.host or "vmess-node",
+        name = obj.ps or obj.tag or obj.remarks or obj.add or obj.host or "VMESS",
         server = obj.add or obj.host or "",
         port = tonumber(obj.port) or 443,
         uuid = obj.id or obj.uuid or "",
@@ -244,15 +278,12 @@ local function parse_vmess(line)
         servername = obj.sni or obj.host or "",
         network = network,
 
-        udp = true,
-        tfo = true,
-
         ws_path = obj.path or obj.wsPath or "/",
         ws_host = obj.host or "",
 
         grpc_service_name = obj.serviceName or obj["service-name"] or obj.grpcServiceName or "",
 
-        client_fingerprint = obj.fp or obj.fingerprint or "chrome",
+        client_fingerprint = obj.fp or obj.fingerprint or DEFAULT_FINGERPRINT,
         alpn = obj.alpn or ""
     }
 
@@ -293,47 +324,27 @@ local function parse_nodes(input)
     return nodes, errors
 end
 
-local function append_base_config(lines, opts)
-    opts = opts or {}
-
-    local unified_delay = opts.unified_delay == true
-    local tcp_concurrent = opts.tcp_concurrent == true
-    local global_fingerprint = opts.global_fingerprint or "chrome"
-
-    table.insert(lines, "port: 7890")
-    table.insert(lines, "socks-port: 7891")
-    table.insert(lines, "redir-port: 7892")
-    table.insert(lines, "mixed-port: 7893")
-    table.insert(lines, "tproxy-port: 7895")
+local function append_base_config(lines)
+    table.insert(lines, "mixed-port: " .. tostring(MIXED_PORT))
     table.insert(lines, "allow-lan: true")
-    table.insert(lines, "bind-address: '*'")
     table.insert(lines, "mode: rule")
-    table.insert(lines, "log-level: silent")
+    table.insert(lines, "log-level: info")
     table.insert(lines, "ipv6: false")
-    table.insert(lines, "unified-delay: " .. yaml_bool(unified_delay))
-    table.insert(lines, "tcp-fast-open: true")
-    table.insert(lines, "tcp-concurrent: " .. yaml_bool(tcp_concurrent))
-    table.insert(lines, "global-client-fingerprint: " .. yaml_quote(global_fingerprint))
-    table.insert(lines, "external-controller: 0.0.0.0:9090")
-    table.insert(lines, "secret: ''")
+    table.insert(lines, "tcp-concurrent: true")
+    table.insert(lines, "unified-delay: true")
     table.insert(lines, "")
 
     table.insert(lines, "profile:")
     table.insert(lines, "  store-selected: true")
-    table.insert(lines, "  store-fake-ip: true")
+    table.insert(lines, "  store-fake-ip: false")
     table.insert(lines, "")
 
+    -- TUN disabled because clean YAML worked better.
     table.insert(lines, "tun:")
-    table.insert(lines, "  enable: true")
-    table.insert(lines, "  stack: system")
-    table.insert(lines, "  auto-route: true")
-    table.insert(lines, "  auto-detect-interface: true")
-    table.insert(lines, "  strict-route: true")
-    table.insert(lines, "  dns-hijack:")
-    table.insert(lines, "    - any:53")
+    table.insert(lines, "  enable: false")
     table.insert(lines, "")
 
-    -- Lighter sniffer to reduce Yacd/OpenClash/Nikki panel ping spikes.
+    -- Sniffer preset: enabled but light, no override.
     table.insert(lines, "sniffer:")
     table.insert(lines, "  enable: true")
     table.insert(lines, "  override-destination: false")
@@ -342,32 +353,41 @@ local function append_base_config(lines, opts)
     table.insert(lines, "      ports:")
     table.insert(lines, "        - 443")
     table.insert(lines, "        - 8443")
+    table.insert(lines, "        - 2053")
+    table.insert(lines, "        - 2083")
+    table.insert(lines, "        - 2087")
+    table.insert(lines, "        - 2096")
     table.insert(lines, "    HTTP:")
     table.insert(lines, "      ports:")
     table.insert(lines, "        - 80")
-    table.insert(lines, "        - 8080-8880")
+    table.insert(lines, "        - 8080")
+    table.insert(lines, "        - 8880")
+    table.insert(lines, "        - 2052")
+    table.insert(lines, "        - 2082")
+    table.insert(lines, "        - 2086")
+    table.insert(lines, "        - 2095")
+    table.insert(lines, "        - 25461")
     table.insert(lines, "")
 
+    -- DNS preset: redir-host because fake-ip caused issues earlier.
     table.insert(lines, "dns:")
     table.insert(lines, "  enable: true")
     table.insert(lines, "  listen: 127.0.0.1:7874")
     table.insert(lines, "  ipv6: false")
-    table.insert(lines, "  enhanced-mode: fake-ip")
-    table.insert(lines, "  fake-ip-range: 198.18.0.1/16")
-    table.insert(lines, "  fake-ip-cache: true")
-    table.insert(lines, "  respect-rules: true")
+    table.insert(lines, "  enhanced-mode: redir-host")
     table.insert(lines, "  use-system-hosts: false")
     table.insert(lines, "  use-hosts: true")
     table.insert(lines, "  default-nameserver:")
     table.insert(lines, "    - 1.1.1.1")
     table.insert(lines, "    - 8.8.8.8")
-    table.insert(lines, "  proxy-server-nameserver:")
-    table.insert(lines, "    - 1.1.1.1")
-    table.insert(lines, "    - 8.8.8.8")
     table.insert(lines, "  nameserver:")
-    table.insert(lines, "    - https://1.1.1.1/dns-query")
-    table.insert(lines, "    - https://dns.google/dns-query")
+    table.insert(lines, "    - 1.1.1.1")
+    table.insert(lines, "    - 1.0.0.1")
+    table.insert(lines, "    - 8.8.8.8")
+    table.insert(lines, "    - 8.8.4.4")
     table.insert(lines, "  fallback:")
+    table.insert(lines, "    - tls://1.1.1.1")
+    table.insert(lines, "    - tls://8.8.8.8")
     table.insert(lines, "    - https://cloudflare-dns.com/dns-query")
     table.insert(lines, "    - https://dns.google/dns-query")
     table.insert(lines, "")
@@ -393,6 +413,7 @@ local function append_proxy(lines, node)
         end
     end
 
+    table.insert(lines, "    network: " .. yaml_quote(node.network or "ws"))
     table.insert(lines, "    tls: " .. yaml_bool(node.tls))
     table.insert(lines, "    skip-cert-verify: " .. yaml_bool(node.skip_cert_verify))
 
@@ -414,8 +435,6 @@ local function append_proxy(lines, node)
         end
     end
 
-    table.insert(lines, "    network: " .. yaml_quote(node.network or "ws"))
-
     if node.network == "ws" then
         table.insert(lines, "    ws-opts:")
         table.insert(lines, "      path: " .. yaml_quote(node.ws_path or "/"))
@@ -431,9 +450,7 @@ local function append_proxy(lines, node)
         table.insert(lines, "      grpc-service-name: " .. yaml_quote(node.grpc_service_name or ""))
     end
 
-    -- Always UDP true, as requested.
     table.insert(lines, "    udp: true")
-    table.insert(lines, "    tfo: true")
 end
 
 local function append_proxies(lines, nodes)
@@ -446,72 +463,67 @@ local function append_proxies(lines, nodes)
     table.insert(lines, "")
 end
 
-local function append_proxy_groups(lines, nodes, opts)
-    opts = opts or {}
+local function append_fallback_group(lines, group_name, ordered_names)
+    table.insert(lines, "  - name: " .. yaml_quote(group_name))
+    table.insert(lines, "    type: fallback")
+    table.insert(lines, "    proxies:")
 
-    local yaml_type = opts.yaml_type or "fallback"
-    local interval = tonumber(opts.interval) or 180
-    local timeout = tonumber(opts.timeout) or 5000
-    local health_url = trim(opts.health_url or "http://www.gstatic.com/generate_204")
-    local lazy = opts.lazy ~= false
-    local lock_index = tonumber(opts.lock_index or 1) or 1
+    for _, name in ipairs(ordered_names) do
+        table.insert(lines, "      - " .. yaml_quote(name))
+    end
 
+    table.insert(lines, "    url: " .. DEFAULT_HEALTH_URL)
+    table.insert(lines, "    interval: " .. tostring(DEFAULT_INTERVAL))
+    table.insert(lines, "    timeout: " .. tostring(DEFAULT_TIMEOUT))
+    table.insert(lines, "    lazy: " .. yaml_bool(DEFAULT_LAZY))
+    table.insert(lines, "    max-failed-times: " .. tostring(DEFAULT_FAILED_TIMES))
+    table.insert(lines, "")
+end
+
+local function make_ordered_names(names, primary_index)
+    local ordered = {}
+
+    table.insert(ordered, names[primary_index])
+
+    for i, name in ipairs(names) do
+        if i ~= primary_index then
+            table.insert(ordered, name)
+        end
+    end
+
+    return ordered
+end
+
+local function append_proxy_groups(lines, nodes, ads_policy)
     local names = {}
 
     for _, node in ipairs(nodes) do
         table.insert(names, node.safe_name)
     end
 
-    if lock_index < 1 then lock_index = 1 end
-    if lock_index > #names then lock_index = 1 end
-
     table.insert(lines, "proxy-groups:")
 
-    if yaml_type == "lock" then
-        table.insert(lines, "  - name: MAIN")
-        table.insert(lines, "    type: select")
-        table.insert(lines, "    proxies:")
-        table.insert(lines, "      - " .. yaml_quote(names[lock_index]))
-        table.insert(lines, "")
+    -- Manual selector that points to per-node fallback groups.
+    table.insert(lines, "  - name: SELECTOR")
+    table.insert(lines, "    type: select")
+    table.insert(lines, "    proxies:")
 
-    elseif yaml_type == "global" then
-        table.insert(lines, "  - name: GLOBAL")
-        table.insert(lines, "    type: select")
-        table.insert(lines, "    proxies:")
+    for _, name in ipairs(names) do
+        table.insert(lines, "      - " .. yaml_quote(name .. "-FALLBACK"))
+    end
 
-        for _, name in ipairs(names) do
-            table.insert(lines, "      - " .. yaml_quote(name))
-        end
+    table.insert(lines, "")
 
-        table.insert(lines, "")
-
-        table.insert(lines, "  - name: MAIN")
-        table.insert(lines, "    type: select")
-        table.insert(lines, "    proxies:")
-        table.insert(lines, "      - GLOBAL")
-        table.insert(lines, "")
-
-    else
-        table.insert(lines, "  - name: MAIN")
-        table.insert(lines, "    type: fallback")
-        table.insert(lines, "    url: " .. yaml_quote(health_url))
-        table.insert(lines, "    interval: " .. tostring(interval))
-        table.insert(lines, "    timeout: " .. tostring(timeout))
-        table.insert(lines, "    lazy: " .. yaml_bool(lazy))
-        table.insert(lines, "    proxies:")
-
-        for _, name in ipairs(names) do
-            table.insert(lines, "      - " .. yaml_quote(name))
-        end
-
-        table.insert(lines, "")
+    -- Every manual selection is actually a fallback group with chosen node as priority.
+    for i, name in ipairs(names) do
+        append_fallback_group(lines, name .. "-FALLBACK", make_ordered_names(names, i))
     end
 
     table.insert(lines, "  - name: ADS")
     table.insert(lines, "    type: select")
     table.insert(lines, "    proxies:")
 
-    if opts.ads_policy == "direct" then
+    if ads_policy == "direct" then
         table.insert(lines, "      - DIRECT")
         table.insert(lines, "      - REJECT")
     else
@@ -522,9 +534,7 @@ local function append_proxy_groups(lines, nodes, opts)
     table.insert(lines, "")
 end
 
-local function append_rule_providers(lines, block_ads)
-    if not block_ads then return end
-
+local function append_rule_providers(lines)
     table.insert(lines, "rule-providers:")
     table.insert(lines, "  Ads:")
     table.insert(lines, "    type: http")
@@ -535,38 +545,12 @@ local function append_rule_providers(lines, block_ads)
     table.insert(lines, "")
 end
 
-local function append_rules(lines, opts)
-    opts = opts or {}
-
-    local yaml_type = opts.yaml_type or "fallback"
-    local block_ads = opts.block_ads == true
-
-    local final_group = "MAIN"
-    if yaml_type == "global" then
-        final_group = "GLOBAL"
-    end
-
+local function append_rules(lines)
     table.insert(lines, "rules:")
-
-    -- Speedtest/Ookla must use proxy group.
-    table.insert(lines, "  - DOMAIN-SUFFIX,speedtest.net," .. final_group)
-    table.insert(lines, "  - DOMAIN-SUFFIX,ookla.com," .. final_group)
-    table.insert(lines, "  - DOMAIN-SUFFIX,ooklaserver.net," .. final_group)
-    table.insert(lines, "  - DOMAIN-KEYWORD,speedtest," .. final_group)
-    table.insert(lines, "  - DOMAIN-KEYWORD,ookla," .. final_group)
-
-    if block_ads then
-        table.insert(lines, "  - RULE-SET,Ads,ADS")
-        table.insert(lines, "  - DOMAIN-KEYWORD,ads,ADS")
-        table.insert(lines, "  - DOMAIN-KEYWORD,tracking,ADS")
-
-        -- Keep analytics optional. It can break some speedtest/app telemetry.
-        if opts.block_analytics == true then
-            table.insert(lines, "  - DOMAIN-KEYWORD,analytics,ADS")
-        end
-    end
-
-    -- LAN/local only.
+    table.insert(lines, "  - RULE-SET,Ads,ADS")
+    table.insert(lines, "  - DOMAIN-KEYWORD,ads,ADS")
+    table.insert(lines, "  - DOMAIN-KEYWORD,tracking,ADS")
+    table.insert(lines, "")
     table.insert(lines, "  - GEOIP,LAN,DIRECT")
     table.insert(lines, "  - DOMAIN-SUFFIX,local,DIRECT")
     table.insert(lines, "  - DOMAIN-SUFFIX,lan,DIRECT")
@@ -575,9 +559,8 @@ local function append_rules(lines, opts)
     table.insert(lines, "  - IP-CIDR,172.16.0.0/12,DIRECT,no-resolve")
     table.insert(lines, "  - IP-CIDR,192.168.0.0/16,DIRECT,no-resolve")
     table.insert(lines, "  - IP-CIDR,224.0.0.0/4,DIRECT,no-resolve")
-
-    -- All public internet must use proxy group.
-    table.insert(lines, "  - MATCH," .. final_group)
+    table.insert(lines, "")
+    table.insert(lines, "  - MATCH,SELECTOR")
 end
 
 local function build_yaml(nodes, opts)
@@ -585,11 +568,11 @@ local function build_yaml(nodes, opts)
 
     local lines = {}
 
-    append_base_config(lines, opts)
+    append_base_config(lines)
     append_proxies(lines, nodes)
-    append_proxy_groups(lines, nodes, opts)
-    append_rule_providers(lines, opts.block_ads == true)
-    append_rules(lines, opts)
+    append_proxy_groups(lines, nodes, opts.ads_policy or DEFAULT_ADS_POLICY)
+    append_rule_providers(lines)
+    append_rules(lines)
 
     return table.concat(lines, "\n") .. "\n"
 end
@@ -603,10 +586,7 @@ end
 local function unique_filename(dir, base, overwrite)
     ensure_dir(dir)
 
-    base = safe_name_raw(base or "clash_config")
-    if base == "" then
-        base = "clash_config"
-    end
+    base = safe_file_name(base or "clash_config")
 
     local fname = string.format("%s/%s.yaml", dir, base)
 
@@ -690,26 +670,7 @@ function action_generate()
     end
 
     local opts = {
-        yaml_type = http.formvalue("yaml_type") or "fallback",
-
-        block_ads = http.formvalue("block_ads") == "1",
-        block_analytics = http.formvalue("block_analytics") == "1",
-        ads_policy = http.formvalue("ads_policy") or "reject",
-
-        interval = tonumber(http.formvalue("interval") or "180") or 180,
-        timeout = tonumber(http.formvalue("timeout") or "5000") or 5000,
-        health_url = http.formvalue("health_url") or "http://www.gstatic.com/generate_204",
-
-        -- Default lazy ON to reduce frequent panel/backend ping spike.
-        lazy = http.formvalue("lazy") ~= "0",
-
-        lock_index = tonumber(http.formvalue("lock_index") or "1") or 1,
-
-        -- Default OFF to reduce spike.
-        unified_delay = http.formvalue("unified_delay") == "1",
-        tcp_concurrent = http.formvalue("tcp_concurrent") == "1",
-
-        global_fingerprint = http.formvalue("global_fingerprint") or "chrome"
+        ads_policy = http.formvalue("ads_policy") or DEFAULT_ADS_POLICY
     }
 
     local yaml = build_yaml(nodes, opts)
