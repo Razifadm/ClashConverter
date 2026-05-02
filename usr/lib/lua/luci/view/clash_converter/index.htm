@@ -90,7 +90,7 @@
 .oc-textarea {
     font-family: monospace;
     font-size: 13px;
-    min-height: 170px;
+    min-height: 180px;
     resize: vertical;
 }
 
@@ -215,10 +215,6 @@
     border-left: 4px solid #ff4faa;
 }
 
-.oc-top-row {
-    margin-bottom: 14px;
-}
-
 @media (max-width: 900px) {
     .oc-grid,
     .oc-grid-2 {
@@ -248,17 +244,17 @@
 <div class="oc-wrap">
     <div class="oc-title">
         OC Converter
-        <span class="oc-badge">VLESS / VMESS → YAML</span>
+        <span class="oc-badge">Selector + Fallback Preset</span>
     </div>
 
     <div class="oc-panel">
-        <div class="oc-section-title">Output File</div>
+        <div class="oc-section-title">File</div>
 
-        <div class="oc-grid-2 oc-top-row">
+        <div class="oc-grid-2">
             <div class="oc-field">
                 <label>YAML File Name</label>
                 <input type="text" id="name_base" placeholder="example: radu_config" value="radu_config">
-                <div class="oc-small">This name will be used when saving the generated YAML file.</div>
+                <div class="oc-small">This name will be used when saving the YAML file.</div>
             </div>
 
             <div class="oc-field">
@@ -269,154 +265,37 @@
                         <option value="nikki">Nikki</option>
                     </select>
                 </div>
-                <div class="oc-small">Choose where the YAML file will be saved.</div>
+                <div class="oc-small">Save to OpenClash or Nikki profile directory.</div>
             </div>
         </div>
 
-        <div class="oc-section-title">YAML Mode</div>
+        <div class="oc-section-title">User Options</div>
 
         <div class="oc-grid">
             <div class="oc-field">
-                <label>YAML Type</label>
+                <label>ADS Action</label>
                 <div class="oc-select-wrap">
-                    <select id="yaml_type">
-                        <option value="fallback" selected>Fallback - auto switch when node is dead</option>
-                        <option value="global">GLOBAL - manual node selection</option>
-                        <option value="lock">LOCK NODE - lock selected node number</option>
+                    <select id="ads_policy">
+                        <option value="reject" selected>REJECT</option>
+                        <option value="direct">DIRECT</option>
                     </select>
                 </div>
-                <div class="oc-small">Fallback switches when the current node fails health check.</div>
+                <div class="oc-small">ADS group can block or bypass ads.</div>
             </div>
 
             <div class="oc-field">
-                <label>Lock Node Number</label>
-                <input type="number" id="lock_index" value="1" min="1" step="1">
-                <div class="oc-small">Used only in LOCK NODE mode. 1 means the first parsed node.</div>
-            </div>
-
-            <div class="oc-field">
-                <label>Status</label>
-                <input type="text" id="node_count" value="0 node" readonly>
-                <div class="oc-small">Shows how many valid nodes were parsed.</div>
-            </div>
-
-            <div class="oc-field">
-                <label>Overwrite Existing File</label>
+                <label>Overwrite</label>
                 <div class="oc-check">
                     <input type="checkbox" id="overwrite" value="1">
                     <span>Enable overwrite</span>
                 </div>
-                <div class="oc-small">If disabled, a numbered YAML file will be created.</div>
-            </div>
-        </div>
-
-        <div class="oc-section-title">Fallback / Ping Stability</div>
-
-        <div class="oc-grid">
-            <div class="oc-field">
-                <label>Health Check URL</label>
-                <input type="text" id="health_url" value="http://www.gstatic.com/generate_204">
-                <div class="oc-small">Used to check whether a node is alive.</div>
+                <div class="oc-small">If disabled, a numbered file will be created.</div>
             </div>
 
             <div class="oc-field">
-                <label>Interval</label>
-                <input type="number" id="interval" value="180" min="30" step="30">
-                <div class="oc-small">Default 180s to reduce panel/backend ping spikes.</div>
-            </div>
-
-            <div class="oc-field">
-                <label>Timeout</label>
-                <input type="number" id="timeout" value="5000" min="1000" step="500">
-                <div class="oc-small">Default 5000ms for stable fallback detection.</div>
-            </div>
-
-            <div class="oc-field">
-                <label>Lazy Check</label>
-                <div class="oc-check">
-                    <input type="checkbox" id="lazy" value="1" checked>
-                    <span>Enable lazy mode</span>
-                </div>
-                <div class="oc-small">ON reduces frequent health-check spikes.</div>
-            </div>
-        </div>
-
-        <div class="oc-section-title">Performance Options</div>
-
-        <div class="oc-grid">
-            <div class="oc-field">
-                <label>Unified Delay</label>
-                <div class="oc-select-wrap">
-                    <select id="unified_delay">
-                        <option value="0" selected>OFF</option>
-                        <option value="1">ON</option>
-                    </select>
-                </div>
-                <div class="oc-small">OFF is safer for stable panel latency display.</div>
-            </div>
-
-            <div class="oc-field">
-                <label>TCP Concurrent</label>
-                <div class="oc-select-wrap">
-                    <select id="tcp_concurrent">
-                        <option value="0" selected>OFF</option>
-                        <option value="1">ON</option>
-                    </select>
-                </div>
-                <div class="oc-small">OFF reduces aggressive connection attempts.</div>
-            </div>
-
-            <div class="oc-field">
-                <label>Fingerprint</label>
-                <div class="oc-select-wrap">
-                    <select id="global_fingerprint">
-                        <option value="chrome" selected>chrome</option>
-                        <option value="firefox">firefox</option>
-                        <option value="safari">safari</option>
-                        <option value="ios">ios</option>
-                        <option value="android">android</option>
-                        <option value="random">random</option>
-                    </select>
-                </div>
-                <div class="oc-small">Chrome is the safest default for most nodes.</div>
-            </div>
-
-            <div class="oc-field">
-                <label>Always UDP</label>
-                <input type="text" value="true" readonly>
-                <div class="oc-small">All generated nodes will use udp: true.</div>
-            </div>
-        </div>
-
-        <div class="oc-section-title">ADS Options</div>
-
-        <div class="oc-grid">
-            <div class="oc-field">
-                <label>Block Ads</label>
-                <div class="oc-check">
-                    <input type="checkbox" id="block_ads" value="1" checked>
-                    <span>Enable ADS group</span>
-                </div>
-            </div>
-
-            <div class="oc-field">
-                <label>ADS Default Action</label>
-                <div class="oc-select-wrap">
-                    <select id="ads_policy">
-                        <option value="reject" selected>REJECT - block ads</option>
-                        <option value="direct">DIRECT - bypass ads</option>
-                    </select>
-                </div>
-                <div class="oc-small">ADS group can use REJECT or DIRECT.</div>
-            </div>
-
-            <div class="oc-field">
-                <label>Block Analytics</label>
-                <div class="oc-check">
-                    <input type="checkbox" id="block_analytics" value="1">
-                    <span>Enable</span>
-                </div>
-                <div class="oc-small">Keep OFF for better Speedtest compatibility.</div>
+                <label>Mode</label>
+                <input type="text" value="SELECTOR → NODE-FALLBACK" readonly>
+                <div class="oc-small">Pick a preferred node in SELECTOR; it still has fallback backup.</div>
             </div>
 
             <div class="oc-field">
@@ -426,16 +305,22 @@
             </div>
         </div>
 
+        <div class="oc-section-title">Preset</div>
+
+        <div class="oc-note">
+            mixed-port: <b>7890</b><br>
+            DNS: <b>redir-host</b>, TUN: <b>disabled</b>, Sniffer: <b>light CDN ports</b><br>
+            Fallback: <b>interval 30s</b>, <b>timeout 15000ms</b>, <b>lazy false</b>, <b>max-failed-times 2</b><br>
+            Rule: <b>MATCH,SELECTOR</b>
+        </div>
+
+        <br>
+
         <label><b>Paste VLESS/VMESS Links</b></label>
         <textarea id="pastebox" class="oc-textarea" placeholder="Paste multiple VLESS/VMESS links here. One link per line."></textarea>
 
         <div class="oc-note">
-            <b>Traffic Flow:</b><br>
-            Fallback → <b>MAIN</b> auto-switches when current node fails<br>
-            GLOBAL → <b>GLOBAL</b> manual node selection<br>
-            LOCK NODE → <b>MAIN</b> locks selected node number<br>
-            ADS → choose <b>REJECT</b> or <b>DIRECT</b><br>
-            Public internet, including Ookla/Speedtest, goes through proxy. LAN/local stays DIRECT.
+            Example: choose <b>1st Vless</b> inside SELECTOR. It uses  first, then automatically falls back to other nodes if 1st node fails.
         </div>
 
         <div id="node_list" class="oc-nodebox"></div>
@@ -466,26 +351,11 @@
     var pastebox = document.getElementById("pastebox");
     var yamlOutput = document.getElementById("yaml_output");
 
-    var yamlType = document.getElementById("yaml_type");
     var target = document.getElementById("target");
-    var lockIndex = document.getElementById("lock_index");
     var nameBase = document.getElementById("name_base");
-
-    var healthUrl = document.getElementById("health_url");
-    var interval = document.getElementById("interval");
-    var timeout = document.getElementById("timeout");
-    var lazy = document.getElementById("lazy");
-
-    var unifiedDelay = document.getElementById("unified_delay");
-    var tcpConcurrent = document.getElementById("tcp_concurrent");
-    var globalFingerprint = document.getElementById("global_fingerprint");
-
-    var blockAds = document.getElementById("block_ads");
     var adsPolicy = document.getElementById("ads_policy");
-    var blockAnalytics = document.getElementById("block_analytics");
     var overwrite = document.getElementById("overwrite");
 
-    var nodeCount = document.getElementById("node_count");
     var nodeList = document.getElementById("node_list");
     var generateMsg = document.getElementById("generate_msg");
     var saveMsg = document.getElementById("save_msg");
@@ -524,7 +394,6 @@
 
         if (!links) {
             yamlOutput.value = "";
-            nodeCount.value = "0 node";
             nodeList.style.display = "none";
             setMsg(generateMsg, "", "");
             return;
@@ -534,27 +403,10 @@
 
         postForm(generateUrl, {
             links: links,
-
-            yaml_type: yamlType.value,
-            lock_index: lockIndex.value || "1",
-
-            block_ads: blockAds.checked ? "1" : "0",
-            block_analytics: blockAnalytics.checked ? "1" : "0",
-            ads_policy: adsPolicy.value || "reject",
-
-            interval: interval.value || "180",
-            timeout: timeout.value || "5000",
-            health_url: healthUrl.value || "http://www.gstatic.com/generate_204",
-
-            lazy: lazy.checked ? "1" : "0",
-
-            unified_delay: unifiedDelay.value || "0",
-            tcp_concurrent: tcpConcurrent.value || "0",
-            global_fingerprint: globalFingerprint.value || "chrome"
+            ads_policy: adsPolicy.value || "reject"
         }).then(function(data) {
             if (data.status === "ok") {
                 yamlOutput.value = data.yaml || "";
-                nodeCount.value = String(data.count || 0) + " node";
 
                 if (data.nodes && data.nodes.length) {
                     nodeList.style.display = "block";
@@ -576,7 +428,6 @@
                 setMsg(generateMsg, "ok", msg);
             } else {
                 yamlOutput.value = "";
-                nodeCount.value = "0 node";
                 nodeList.style.display = "none";
 
                 var err = data.msg || "Auto convert failed.";
@@ -654,7 +505,6 @@
     document.getElementById("btn_clear").addEventListener("click", function() {
         pastebox.value = "";
         yamlOutput.value = "";
-        nodeCount.value = "0 node";
         nodeList.style.display = "none";
         setMsg(generateMsg, "", "");
         setMsg(saveMsg, "", "");
@@ -662,18 +512,7 @@
 
     [
         pastebox,
-        yamlType,
-        lockIndex,
-        healthUrl,
-        interval,
-        timeout,
-        lazy,
-        unifiedDelay,
-        tcpConcurrent,
-        globalFingerprint,
-        blockAds,
-        adsPolicy,
-        blockAnalytics
+        adsPolicy
     ].forEach(function(el) {
         el.addEventListener("input", debounceGenerate);
         el.addEventListener("change", debounceGenerate);
