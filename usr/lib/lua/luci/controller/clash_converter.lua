@@ -344,29 +344,9 @@ local function append_base_config(lines)
     table.insert(lines, "  enable: false")
     table.insert(lines, "")
 
-    -- Sniffer preset: enabled but light, no override.
+    -- Sniffer disabled to avoid Ookla socket/server-selection issues.
     table.insert(lines, "sniffer:")
-    table.insert(lines, "  enable: true")
-    table.insert(lines, "  override-destination: false")
-    table.insert(lines, "  sniff:")
-    table.insert(lines, "    TLS:")
-    table.insert(lines, "      ports:")
-    table.insert(lines, "        - 443")
-    table.insert(lines, "        - 8443")
-    table.insert(lines, "        - 2053")
-    table.insert(lines, "        - 2083")
-    table.insert(lines, "        - 2087")
-    table.insert(lines, "        - 2096")
-    table.insert(lines, "    HTTP:")
-    table.insert(lines, "      ports:")
-    table.insert(lines, "        - 80")
-    table.insert(lines, "        - 8080")
-    table.insert(lines, "        - 8880")
-    table.insert(lines, "        - 2052")
-    table.insert(lines, "        - 2082")
-    table.insert(lines, "        - 2086")
-    table.insert(lines, "        - 2095")
-    table.insert(lines, "        - 25461")
+    table.insert(lines, "  enable: false")
     table.insert(lines, "")
 
     -- DNS preset: redir-host because fake-ip caused issues earlier.
@@ -547,10 +527,22 @@ end
 
 local function append_rules(lines)
     table.insert(lines, "rules:")
+
+    -- Ookla / Speedtest must be above ADS rules.
+    table.insert(lines, "  - DOMAIN-SUFFIX,speedtest.net,SELECTOR")
+    table.insert(lines, "  - DOMAIN-SUFFIX,ookla.com,SELECTOR")
+    table.insert(lines, "  - DOMAIN-SUFFIX,ooklaserver.net,SELECTOR")
+    table.insert(lines, "  - DOMAIN-SUFFIX,speedtestcustom.com,SELECTOR")
+    table.insert(lines, "  - DOMAIN-KEYWORD,speedtest,SELECTOR")
+    table.insert(lines, "  - DOMAIN-KEYWORD,ookla,SELECTOR")
+    table.insert(lines, "")
+
+    -- ADS still enabled.
     table.insert(lines, "  - RULE-SET,Ads,ADS")
     table.insert(lines, "  - DOMAIN-KEYWORD,ads,ADS")
     table.insert(lines, "  - DOMAIN-KEYWORD,tracking,ADS")
     table.insert(lines, "")
+
     table.insert(lines, "  - GEOIP,LAN,DIRECT")
     table.insert(lines, "  - DOMAIN-SUFFIX,local,DIRECT")
     table.insert(lines, "  - DOMAIN-SUFFIX,lan,DIRECT")
@@ -560,6 +552,7 @@ local function append_rules(lines)
     table.insert(lines, "  - IP-CIDR,192.168.0.0/16,DIRECT,no-resolve")
     table.insert(lines, "  - IP-CIDR,224.0.0.0/4,DIRECT,no-resolve")
     table.insert(lines, "")
+
     table.insert(lines, "  - MATCH,SELECTOR")
 end
 
