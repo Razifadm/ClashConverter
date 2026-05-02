@@ -13,10 +13,10 @@ local SAVE_DIR_NIKKI     = "/etc/nikki/profiles"
 -- Presets
 local MIXED_PORT            = 7890
 local DEFAULT_HEALTH_URL    = "http://cp.cloudflare.com/generate_204"
-local DEFAULT_INTERVAL      = 30
+local DEFAULT_INTERVAL      = 120
 local DEFAULT_TIMEOUT       = 15000
-local DEFAULT_LAZY          = false
-local DEFAULT_FAILED_TIMES  = 2
+local DEFAULT_LAZY          = true
+local DEFAULT_FAILED_TIMES  = 3
 local DEFAULT_FINGERPRINT   = "chrome"
 local DEFAULT_ADS_POLICY    = "reject"
 
@@ -339,17 +339,14 @@ local function append_base_config(lines)
     table.insert(lines, "  store-fake-ip: false")
     table.insert(lines, "")
 
-    -- TUN disabled because clean YAML worked better.
     table.insert(lines, "tun:")
     table.insert(lines, "  enable: false")
     table.insert(lines, "")
 
-    -- Sniffer disabled to avoid Ookla socket/server-selection issues.
     table.insert(lines, "sniffer:")
     table.insert(lines, "  enable: false")
     table.insert(lines, "")
 
-    -- DNS preset: redir-host because fake-ip caused issues earlier.
     table.insert(lines, "dns:")
     table.insert(lines, "  enable: true")
     table.insert(lines, "  listen: 127.0.0.1:7874")
@@ -483,7 +480,6 @@ local function append_proxy_groups(lines, nodes, ads_policy)
 
     table.insert(lines, "proxy-groups:")
 
-    -- Manual selector that points to per-node fallback groups.
     table.insert(lines, "  - name: SELECTOR")
     table.insert(lines, "    type: select")
     table.insert(lines, "    proxies:")
@@ -494,7 +490,6 @@ local function append_proxy_groups(lines, nodes, ads_policy)
 
     table.insert(lines, "")
 
-    -- Every manual selection is actually a fallback group with chosen node as priority.
     for i, name in ipairs(names) do
         append_fallback_group(lines, name .. "-FALLBACK", make_ordered_names(names, i))
     end
@@ -528,7 +523,6 @@ end
 local function append_rules(lines)
     table.insert(lines, "rules:")
 
-    -- Ookla / Speedtest must be above ADS rules.
     table.insert(lines, "  - DOMAIN-SUFFIX,speedtest.net,SELECTOR")
     table.insert(lines, "  - DOMAIN-SUFFIX,ookla.com,SELECTOR")
     table.insert(lines, "  - DOMAIN-SUFFIX,ooklaserver.net,SELECTOR")
@@ -537,7 +531,6 @@ local function append_rules(lines)
     table.insert(lines, "  - DOMAIN-KEYWORD,ookla,SELECTOR")
     table.insert(lines, "")
 
-    -- ADS still enabled.
     table.insert(lines, "  - RULE-SET,Ads,ADS")
     table.insert(lines, "  - DOMAIN-KEYWORD,ads,ADS")
     table.insert(lines, "  - DOMAIN-KEYWORD,tracking,ADS")
