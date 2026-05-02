@@ -309,8 +309,9 @@
 
         <div class="oc-note">
             mixed-port: <b>7890</b><br>
-            DNS: <b>redir-host</b>, TUN: <b>disabled</b>, Sniffer: <b>light CDN ports</b><br>
+            DNS: <b>redir-host</b>, TUN: <b>disabled</b>, Sniffer: <b>disabled</b><br>
             Fallback: <b>interval 30s</b>, <b>timeout 15000ms</b>, <b>lazy false</b>, <b>max-failed-times 2</b><br>
+            Speedtest/Ookla rules are placed <b>above ADS</b><br>
             Rule: <b>MATCH,SELECTOR</b>
         </div>
 
@@ -320,7 +321,7 @@
         <textarea id="pastebox" class="oc-textarea" placeholder="Paste multiple VLESS/VMESS links here. One link per line."></textarea>
 
         <div class="oc-note">
-            Example: choose <b>1st Vless</b> inside SELECTOR. It uses  first, then automatically falls back to other nodes if 1st node fails.
+            Example: choose <b>SHIN-FALLBACK</b> inside SELECTOR. It uses SHIN first, then automatically falls back to other nodes if SHIN fails.
         </div>
 
         <div id="node_list" class="oc-nodebox"></div>
