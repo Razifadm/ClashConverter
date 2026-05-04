@@ -95,7 +95,7 @@
 }
 
 #yaml_output {
-    min-height: 470px;
+    min-height: 520px;
 }
 
 .oc-actions {
@@ -244,7 +244,7 @@
 <div class="oc-wrap">
     <div class="oc-title">
         OC Converter
-        <span class="oc-badge">Selector + Fallback Preset</span>
+        <span class="oc-badge">LF / OTT Preset</span>
     </div>
 
     <div class="oc-panel">
@@ -269,60 +269,19 @@
             </div>
         </div>
 
-        <div class="oc-section-title">User Options</div>
-
-        <div class="oc-grid">
-            <div class="oc-field">
-                <label>ADS Action</label>
-                <div class="oc-select-wrap">
-                    <select id="ads_policy">
-                        <option value="reject" selected>REJECT</option>
-                        <option value="direct">DIRECT</option>
-                    </select>
-                </div>
-                <div class="oc-small">ADS group can block or bypass ads.</div>
-            </div>
-
-            <div class="oc-field">
-                <label>Overwrite</label>
-                <div class="oc-check">
-                    <input type="checkbox" id="overwrite" value="1">
-                    <span>Enable overwrite</span>
-                </div>
-                <div class="oc-small">If disabled, a numbered file will be created.</div>
-            </div>
-
-            <div class="oc-field">
-                <label>Mode</label>
-                <input type="text" value="SELECTOR → NODE-FALLBACK" readonly>
-                <div class="oc-small">Pick preferred node in SELECTOR; it still has fallback backup.</div>
-            </div>
-
-            <div class="oc-field">
-                <label>Auto Convert</label>
-                <input type="text" value="enabled" readonly>
-                <div class="oc-small">YAML updates automatically after paste or option changes.</div>
-            </div>
-        </div>
-
         <div class="oc-section-title">Preset</div>
 
         <div class="oc-note">
-            mixed-port: <b>7890</b><br>
-            DNS: <b>redir-host</b>, TUN: <b>disabled</b>, Sniffer: <b>disabled</b><br>
-            Fallback: <b>interval 120s</b>, <b>timeout 15000ms</b>, <b>lazy true</b>, <b>max-failed-times 3</b><br>
-            Speedtest/Ookla rules are placed <b>above ADS</b><br>
-            Rule: <b>MATCH,SELECTOR</b>
+            Base: <b>port 7890</b>, <b>socks 7891</b>, <b>redir 7892</b>, <b>mixed 7893</b>, <b>tproxy 7895</b><br>
+            DNS: <b>fake-ip</b>, TUN: <b>enabled</b>, Sniffer: <b>enabled</b><br>
+            Groups: <b>MAIN</b>, <b>OTT/TTshop</b>, <b>OTTProxies</b>, node fallback groups, <b>Ads</b>, <b>Adult</b><br>
+            VLESS port and TLS will follow pasted link. Port <b>80</b> stays 80, port <b>443</b> stays 443.
         </div>
 
         <br>
 
         <label><b>Paste VLESS/VMESS Links</b></label>
         <textarea id="pastebox" class="oc-textarea" placeholder="Paste multiple VLESS/VMESS links here. One link per line."></textarea>
-
-        <div class="oc-note">
-            Example: choose <b>SHIN-FALLBACK</b> inside SELECTOR. It uses SHIN first, then automatically falls back to other nodes if SHIN fails.
-        </div>
 
         <div id="node_list" class="oc-nodebox"></div>
         <div id="generate_msg" class="oc-msg"></div>
@@ -351,11 +310,9 @@
 
     var pastebox = document.getElementById("pastebox");
     var yamlOutput = document.getElementById("yaml_output");
-
     var target = document.getElementById("target");
     var nameBase = document.getElementById("name_base");
-    var adsPolicy = document.getElementById("ads_policy");
-    var overwrite = document.getElementById("overwrite");
+    var overwrite = null;
 
     var nodeList = document.getElementById("node_list");
     var generateMsg = document.getElementById("generate_msg");
@@ -403,8 +360,7 @@
         setMsg(generateMsg, "ok", "Auto converting...");
 
         postForm(generateUrl, {
-            links: links,
-            ads_policy: adsPolicy.value || "reject"
+            links: links
         }).then(function(data) {
             if (data.status === "ok") {
                 yamlOutput.value = data.yaml || "";
@@ -420,7 +376,6 @@
 
                 if (data.errors && data.errors.length) {
                     msg += "\n\nWarning / skipped lines:";
-
                     data.errors.forEach(function(e) {
                         msg += "\n- " + (e.error || "error");
                     });
@@ -448,7 +403,6 @@
 
     function debounceGenerate() {
         clearTimeout(debounceTimer);
-
         debounceTimer = setTimeout(function() {
             generateYaml();
         }, 600);
@@ -467,7 +421,7 @@
         postForm(saveUrl, {
             yaml_input: yaml,
             name_base: nameBase.value || "clash_config",
-            overwrite: overwrite.checked ? "1" : "0",
+            overwrite: "0",
             target: target.value || "openclash"
         }).then(function(data) {
             if (data.status === "ok") {
@@ -511,13 +465,8 @@
         setMsg(saveMsg, "", "");
     });
 
-    [
-        pastebox,
-        adsPolicy
-    ].forEach(function(el) {
-        el.addEventListener("input", debounceGenerate);
-        el.addEventListener("change", debounceGenerate);
-    });
+    pastebox.addEventListener("input", debounceGenerate);
+    pastebox.addEventListener("change", debounceGenerate);
 })();
 </script>
 
